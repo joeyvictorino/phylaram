@@ -9,11 +9,14 @@
 ---
 
 > [!WARNING]
-> **Pre-Release Status (v0.1.0-alpha):** Binaries produced in CI are test-signed with a self-signed certificate. To load the kernel driver (`phylaram.sys`) on a test VM, test-signing mode must be enabled:
-> ```cmd
-> bcdedit /set testsigning on
-> :: Reboot required
-> ```
+> **Pre-Release Status (v0.1.0-alpha):** Binaries produced in CI are test-signed with a self-signed certificate. To load the kernel driver (`phylaram.sys`) on a test VM or physical machine:
+> 1. Ensure **Secure Boot is Disabled** in your UEFI/BIOS or VM firmware settings.
+> 2. Right-click `install_test_cert.bat` and select **"Run as administrator"** (installs certificate to Trusted Root & Trusted Publishers).
+> 3. Enable test-signing mode from an elevated prompt:
+>    ```cmd
+>    bcdedit /set testsigning on
+>    shutdown /r /t 0
+>    ```
 > Production EV / WHQL attestation signing is planned for post-validation releases.
 
 ---
@@ -123,11 +126,14 @@ phylaram.exe <output.raw | -> [options]
 
 ## Validating in a Lab / VM with Volatility 3
 
-1. **Enable Test-Signing on your VM:**
-   ```cmd
-   bcdedit /set testsigning on
-   shutdown /r /t 0
-   ```
+1. **Prepare your VM / Test Environment:**
+   - Ensure **Secure Boot is Disabled** in VM settings.
+   - Run `install_test_cert.bat` as Administrator.
+   - Enable test-signing and restart:
+     ```cmd
+     bcdedit /set testsigning on
+     shutdown /r /t 0
+     ```
 
 2. **Acquire Live Memory:**
    ```cmd

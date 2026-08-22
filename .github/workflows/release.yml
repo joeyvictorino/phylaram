@@ -32,6 +32,30 @@ jobs:
       - name: Build Driver (Release | x64)
         run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
 
+      - name: Test-Sign Driver (Pre-CLI Embedding)
+        shell: pwsh
+        run: |
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
+            -Subject "CN=PhylaRAM Test Signing" `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -NotAfter (Get-Date).AddYears(1)
+          $thumbprint = $cert.Thumbprint
+          echo "CERT_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
+
+          # Export public certificate for local installation on test machines
+          Export-Certificate -Cert $cert -FilePath bin\PhylaRAM_TestCert.cer | Out-Null
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if ($signtool) {
+            # Sign driver BEFORE compiling CLI so phylaram.rc embeds the signed driver!
+            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
+            Write-Host "Driver test-signed with thumbprint: $thumbprint"
+          }
+
       - name: Build CLI (Release | x64)
         run: msbuild cli\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
 
@@ -41,23 +65,18 @@ jobs:
           cargo build --release
           copy target\release\phylaram-verify.exe ..\..\bin\phylaram-verify.exe
 
-      - name: Test-Sign Binaries
+      - name: Test-Sign CLI & Verifier
         shell: pwsh
         run: |
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-            -Subject "CN=PhylaRAM Test Signing" `
-            -CertStoreLocation Cert:\CurrentUser\My `
-            -NotAfter (Get-Date).AddYears(1)
-          $thumbprint = $cert.Thumbprint
-
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -match 'x64' } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1 -ExpandProperty FullName
 
-          if ($signtool) {
-            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
-            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
+          if ($signtool -and $env:CERT_THUMBPRINT) {
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram-verify.exe 2>&1
+            Write-Host "CLI and Verifier test-signed successfully."
           }
 
       - name: Determine Version
@@ -78,6 +97,8 @@ jobs:
           copy bin\phylaram.exe dist\$dir\
           copy bin\phylaram.sys dist\$dir\
           copy bin\phylaram-verify.exe dist\$dir\
+          copy bin\PhylaRAM_TestCert.cer dist\$dir\
+          copy scripts\install_test_cert.bat dist\$dir\
           copy README.md dist\$dir\README.txt
           copy LICENSE dist\$dir\LICENSE.txt
           Compress-Archive -Path dist\$dir\* -DestinationPath "$dir.zip"

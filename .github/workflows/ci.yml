@@ -56,6 +56,34 @@ jobs:
       - name: Build Driver (Release | x64)
         run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
 
+      - name: Test-Sign Driver (Pre-CLI Embedding)
+        shell: pwsh
+        run: |
+          # Generate self-signed certificate for driver test-signing
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
+            -Subject "CN=PhylaRAM Test Signing" `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -NotAfter (Get-Date).AddYears(1)
+          $thumbprint = $cert.Thumbprint
+          echo "CERT_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
+
+          # Export public certificate for local installation on test machines
+          Export-Certificate -Cert $cert -FilePath bin\PhylaRAM_TestCert.cer | Out-Null
+
+          # Locate signtool.exe
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if ($signtool) {
+            # Sign driver BEFORE compiling CLI so phylaram.rc embeds the signed driver!
+            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
+            Write-Host "Driver test-signed with thumbprint: $thumbprint"
+          } else {
+            Write-Warning "signtool.exe not found"
+          }
+
       - name: Build CLI (Release | x64)
         run: msbuild cli\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
 
@@ -65,33 +93,19 @@ jobs:
           cargo build --release
           copy target\release\phylaram-verify.exe ..\..\bin\phylaram-verify.exe
 
-      - name: Test-Sign Binaries
+      - name: Test-Sign CLI & Verifier
         shell: pwsh
         run: |
-          # Generate a self-signed code signing certificate for test-signing
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-            -Subject "CN=PhylaRAM Test Signing" `
-            -CertStoreLocation Cert:\CurrentUser\My `
-            -NotAfter (Get-Date).AddYears(1)
-          $thumbprint = $cert.Thumbprint
-
-          # Find signtool from the Windows SDK
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
             Where-Object { $_.FullName -match 'x64' } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1 -ExpandProperty FullName
 
-          if (-not $signtool) {
-            Write-Warning "signtool.exe not found — skipping test-signing"
-            exit 0
+          if ($signtool -and $env:CERT_THUMBPRINT) {
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram-verify.exe 2>&1
+            Write-Host "CLI and Verifier test-signed successfully."
           }
-
-          # Sign driver and CLI with test certificate
-          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
-          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
-
-          # Record signing info for auditability
-          Write-Host "Test-signed with certificate thumbprint: $thumbprint"
 
       - name: Package Artifacts
         run: |
@@ -99,6 +113,8 @@ jobs:
           copy bin\phylaram.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
           copy bin\phylaram.sys dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
           copy bin\phylaram-verify.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
+          copy bin\PhylaRAM_TestCert.cer dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
+          copy scripts\install_test_cert.bat dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
           copy README.md dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\README.txt
           copy LICENSE dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\LICENSE.txt
 

@@ -67,6 +67,23 @@ bool ExtractEmbeddedDriver(std::wstring& driverPathOut)
 {
     driverPathOut.clear();
 
+    // 1. Check if an adjacent phylaram.sys sidecar file exists next to the executable
+    wchar_t exePath[MAX_PATH + 1]{};
+    DWORD modLen = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    if (modLen > 0 && modLen <= MAX_PATH) {
+        std::wstring exeStr(exePath);
+        size_t lastSlash = exeStr.find_last_of(L"\\/");
+        if (lastSlash != std::wstring::npos) {
+            std::wstring sidecar = exeStr.substr(0, lastSlash + 1) + L"phylaram.sys";
+            DWORD attr = GetFileAttributesW(sidecar.c_str());
+            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+                driverPathOut = sidecar;
+                return true;
+            }
+        }
+    }
+
+    // 2. Otherwise extract from embedded IDR_PHYLA_DRIVER resource
     HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_PHYLA_DRIVER), RT_RCDATA);
     if (!res) {
         return false;
