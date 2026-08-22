@@ -128,6 +128,21 @@ Conditioning `Directory.Build.props` on `$(ConfigurationType)` failed because `D
 ### Fix Applied:
 Directly imported `Microsoft.Windows.WDK.x64.props` within `driver/phylaram.vcxproj` and kept `Directory.Build.props` empty, cleanly isolating kernel toolsets to the driver while leaving the user-mode CLI toolchain completely standard.
 
+---
+
+## CI Run #32599846487 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (WDK SDK dependency)
+
+### Root Cause:
+`Microsoft.Windows.WDK.x64.props` version 10.0.26100.1 depends on Windows SDK 10.0.26100.0, which was missing because `Microsoft.Windows.SDK.CPP` had been removed from `packages.config`.
+
+### Fix Applied:
+1. Restored `Microsoft.Windows.SDK.CPP` and `Microsoft.Windows.SDK.CPP.x64` to `packages.config`.
+2. Imported `Microsoft.Windows.SDK.CPP.props` directly into `driver/phylaram.vcxproj` alongside `Microsoft.Windows.WDK.x64.props`.
+
+
 
 
 

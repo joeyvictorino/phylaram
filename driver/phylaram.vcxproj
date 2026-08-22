@@ -43,6 +43,8 @@
     <SpectreMitigation>Spectre</SpectreMitigation>
     <SignMode>Off</SignMode>
   </PropertyGroup>
+  <Import Project="$(ProjectDir)..\packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props"
+          Condition="Exists('$(ProjectDir)..\packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props')" />
   <Import Project="$(ProjectDir)..\packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props"
           Condition="Exists('$(ProjectDir)..\packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props')" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
