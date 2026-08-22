@@ -65,3 +65,17 @@ Identical root cause to CI run above. Same `error C1083: Cannot open include fil
 2. Declared `NTSYSAPI NTSTATUS NTAPI ZwYieldExecution(VOID);` in `driver/driver.h`.
 3. Replaced `SIZE_MAX` with `(((size_t)-1) / sizeof(PHYLA_MEMORY_RUN))` in `driver/ioctl.c`.
 
+---
+
+## CI Run #32599373379 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (driver compilation)
+
+### Failed Step: Build Driver (Release | x64)
+- `session.c(194)`: `error C4013: 'RtlPcToFileHeader' undefined; assuming extern returning int` (compiler warnings treated as errors under `/WX`).
+
+### Fix Applied
+Declared `NTSYSAPI PVOID NTAPI RtlPcToFileHeader(_In_ PVOID PcValue, _Out_ PVOID *BaseOfImage);` in `driver/driver.h`.
+
+

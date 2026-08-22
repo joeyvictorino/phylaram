@@ -8,6 +8,7 @@
 #define PHYLA_POOL_TAG 'MLYP'
 
 NTSYSAPI NTSTATUS NTAPI ZwYieldExecution(VOID);
+NTSYSAPI PVOID NTAPI RtlPcToFileHeader(_In_ PVOID PcValue, _Out_ PVOID *BaseOfImage);
 
 typedef struct _PHYLA_FILE_CONTEXT {
     PPHYSICAL_MEMORY_RANGE Ranges;
