@@ -78,4 +78,23 @@ Identical root cause to CI run above. Same `error C1083: Cannot open include fil
 ### Fix Applied
 Declared `NTSYSAPI PVOID NTAPI RtlPcToFileHeader(_In_ PVOID PcValue, _Out_ PVOID *BaseOfImage);` in `driver/driver.h`.
 
+---
+
+## CI Run #32599473508 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (MSBuild SignTool step)
+
+### Progress:
+- All 4 driver C files (`driver.c`, `session.c`, `ioctl.c`, `memory.c`) compiled and linked **100% cleanly**!
+- `phylaram.sys` generated successfully.
+
+### Failed Step: MSBuild Driver SignTask
+- `SIGNTASK : SignTool error : No file digest algorithm specified.` (Default WDK project test-signing task failed because digest algorithm was not configured in project properties).
+
+### Fix Applied
+1. Added `<SignMode>Off</SignMode>` to `driver/phylaram.vcxproj` and `/p:SignMode=Off` to CI workflow (signing is handled explicitly by the dedicated PowerShell + `signtool.exe` test-signing step).
+2. Fixed `OutDir` in `driver/phylaram.vcxproj` and `cli/phylaram.vcxproj` to `$(ProjectDir)..\bin\` ensuring correct binary artifact placement for resource embedding.
+
+
 

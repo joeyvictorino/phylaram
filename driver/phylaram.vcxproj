@@ -29,6 +29,7 @@
     <KMDF_VERSION_MINOR>15</KMDF_VERSION_MINOR>
     <EnableInf2cat>false</EnableInf2cat>
     <SpectreMitigation>Spectre</SpectreMitigation>
+    <SignMode>Off</SignMode>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Driver</ConfigurationType>
@@ -40,12 +41,13 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <EnableInf2cat>false</EnableInf2cat>
     <SpectreMitigation>Spectre</SpectreMitigation>
+    <SignMode>Off</SignMode>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
     <TargetName>phylaram</TargetName>
-    <OutDir>$(SolutionDir)bin\</OutDir>
-    <IntDir>$(SolutionDir)obj\driver\$(Configuration)\</IntDir>
+    <OutDir>$(ProjectDir)..\bin\</OutDir>
+    <IntDir>$(ProjectDir)..\obj\driver\$(Configuration)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

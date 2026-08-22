@@ -54,7 +54,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Driver (Release | x64)
-        run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
+        run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
 
       - name: Build CLI (Release | x64)
         run: msbuild cli\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
