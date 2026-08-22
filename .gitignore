@@ -1,0 +1,29 @@
+# Build and Intermediate Directories
+bin/
+dist/
+obj/
+x64/
+Debug/
+Release/
+target/
+
+# Visual Studio Files
+.vs/
+*.user
+*.suo
+*.db
+*.opendb
+*.idb
+*.ipch
+*.log
+*.tlog
+*.lastcodeanalysissucceeded
+*.VC.db
+
+# OS / Temporary Files
+.DS_Store
+*.tmp
+*.bak
+*.swp
+*.patch
+/tmp/

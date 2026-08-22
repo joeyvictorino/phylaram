@@ -1,0 +1,72 @@
+name: PhylaRAM Continuous Integration
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  test-unix:
+    name: Portable C++20 & Rust Verification (macOS / Linux)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Run Portable C++20 Unit Tests
+        run: |
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
+
+      - name: Run Rust Tests & Clippy
+        working-directory: tools/phylaram-verify
+        run: |
+          cargo fmt --check
+          cargo clippy -- -D warnings
+          cargo test --verbose
+
+  build-windows:
+    name: Windows MSVC & KMDF Build
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Driver & CLI (Release | x64)
+        run: |
+          msbuild PhylaRAM.sln /p:Configuration=Release /p:Platform=x64 /p:WarningLevel=4 /p:TreatWarningAsError=true /v:minimal /m
+
+      - name: Build Rust Offline Verifier
+        working-directory: tools/phylaram-verify
+        run: |
+          cargo build --release
+          copy target\release\phylaram-verify.exe ..\..\bin\phylaram-verify.exe
+
+      - name: Package Distribution
+        run: |
+          mkdir dist\PhylaRAM-v1.0-x64
+          copy bin\phylaram.exe dist\PhylaRAM-v1.0-x64\
+          copy bin\phylaram-verify.exe dist\PhylaRAM-v1.0-x64\
+          copy README.md dist\PhylaRAM-v1.0-x64\README.txt
+          copy LICENSE dist\PhylaRAM-v1.0-x64\LICENSE.txt
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhylaRAM-v1.0-x64
+          path: dist/PhylaRAM-v1.0-x64/
