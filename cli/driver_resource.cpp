@@ -70,6 +70,7 @@ bool ExtractEmbeddedDriver(std::wstring& driverPathOut)
     // 1. Check if an adjacent phylaram.sys sidecar file exists next to the executable
     wchar_t exePath[MAX_PATH + 1]{};
     DWORD modLen = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    std::wstring sidecarPath;
     if (modLen > 0 && modLen <= MAX_PATH) {
         std::wstring exeStr(exePath);
         size_t lastSlash = exeStr.find_last_of(L"\\/");
@@ -77,27 +78,9 @@ bool ExtractEmbeddedDriver(std::wstring& driverPathOut)
             std::wstring sidecar = exeStr.substr(0, lastSlash + 1) + L"phylaram.sys";
             DWORD attr = GetFileAttributesW(sidecar.c_str());
             if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                driverPathOut = sidecar;
-                return true;
+                sidecarPath = sidecar;
             }
         }
-    }
-
-    // 2. Otherwise extract from embedded IDR_PHYLA_DRIVER resource
-    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_PHYLA_DRIVER), RT_RCDATA);
-    if (!res) {
-        return false;
-    }
-
-    HGLOBAL loaded = LoadResource(nullptr, res);
-    if (!loaded) {
-        return false;
-    }
-
-    DWORD size = SizeofResource(nullptr, res);
-    const void* bytes = LockResource(loaded);
-    if (!bytes || size == 0) {
-        return false;
     }
 
     std::wstring path = GenerateUnpredictableDriverPath();
@@ -111,6 +94,37 @@ bool ExtractEmbeddedDriver(std::wstring& driverPathOut)
     const wchar_t* sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;BA)";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl, SDDL_REVISION_1, &sa.lpSecurityDescriptor, nullptr)) {
+        return false;
+    }
+
+    // If an adjacent sidecar exists, copy it securely to the protected temporary directory
+    if (!sidecarPath.empty()) {
+        BOOL copyOk = CopyFileW(sidecarPath.c_str(), path.c_str(), FALSE);
+        if (copyOk) {
+            SetFileSecurityW(path.c_str(), DACL_SECURITY_INFORMATION, sa.lpSecurityDescriptor);
+            LocalFree(sa.lpSecurityDescriptor);
+            driverPathOut = path;
+            return true;
+        }
+    }
+
+    // 2. Otherwise extract from embedded IDR_PHYLA_DRIVER resource
+    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_PHYLA_DRIVER), RT_RCDATA);
+    if (!res) {
+        LocalFree(sa.lpSecurityDescriptor);
+        return false;
+    }
+
+    HGLOBAL loaded = LoadResource(nullptr, res);
+    if (!loaded) {
+        LocalFree(sa.lpSecurityDescriptor);
+        return false;
+    }
+
+    DWORD size = SizeofResource(nullptr, res);
+    const void* bytes = LockResource(loaded);
+    if (!bytes || size == 0) {
+        LocalFree(sa.lpSecurityDescriptor);
         return false;
     }
 

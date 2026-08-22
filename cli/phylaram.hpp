@@ -123,6 +123,7 @@ private:
     ScopedHandle file_;
     bool sparse_ = false;
     bool isStdout_ = false;
+    uint64_t logicalSize_ = 0;
     uint64_t currentStreamOffset_ = 0;
     DWORD lastError_ = ERROR_SUCCESS;
 };

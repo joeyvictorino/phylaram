@@ -10,6 +10,7 @@ bool RawWriter::PreflightAndOpen(const std::wstring& partialPath,
     Close();
     lastError_ = ERROR_SUCCESS;
     isStdout_ = false;
+    logicalSize_ = logicalSize;
     currentStreamOffset_ = 0;
 
     // Support stdout streaming when "-" is specified
@@ -182,6 +183,20 @@ bool RawWriter::FlushAndClose()
     }
 
     if (isStdout_) {
+        // Stream trailing zero bytes up to logicalSize if the stream hasn't reached it
+        if (currentStreamOffset_ < logicalSize_) {
+            uint64_t gap = logicalSize_ - currentStreamOffset_;
+            std::vector<uint8_t> zeroChunk(static_cast<size_t>(std::min<uint64_t>(gap, 1024u * 1024u)), 0);
+            while (gap > 0) {
+                DWORD toWrite = static_cast<DWORD>(std::min<uint64_t>(gap, zeroChunk.size()));
+                DWORD written = 0;
+                if (!WriteFile(file_.Get(), zeroChunk.data(), toWrite, &written, nullptr) || written == 0) {
+                    break;
+                }
+                gap -= written;
+                currentStreamOffset_ += written;
+            }
+        }
         file_.Release(); // Do not close standard output handle
         return true;
     }
