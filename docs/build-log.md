@@ -96,5 +96,24 @@ Declared `NTSYSAPI PVOID NTAPI RtlPcToFileHeader(_In_ PVOID PcValue, _Out_ PVOID
 1. Added `<SignMode>Off</SignMode>` to `driver/phylaram.vcxproj` and `/p:SignMode=Off` to CI workflow (signing is handled explicitly by the dedicated PowerShell + `signtool.exe` test-signing step).
 2. Fixed `OutDir` in `driver/phylaram.vcxproj` and `cli/phylaram.vcxproj` to `$(ProjectDir)..\bin\` ensuring correct binary artifact placement for resource embedding.
 
+---
+
+## CI Run #32599596570 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (CLI linker step)
+
+### Progress:
+- `✓ Build Driver (Release | x64)` **PASSED completely!** `phylaram.sys` generated cleanly.
+- All CLI C++ translation units (`main.cpp`, `device.cpp`, `driver_resource.cpp`, `driver_service.cpp`, `raw_writer.cpp`, `sha256.cpp`, `map.cpp`, `acquire.cpp`) compiled cleanly with `/W4 /WX /guard:cf /std:c++20`.
+
+### Failed Step: Build CLI (Release | x64)
+- `LINK : fatal error LNK1181: cannot open input file 'bcrypt.lib'` (Unconditional WDK NuGet props import in `Directory.Build.props` overrode user-mode SDK library directories for non-driver projects).
+
+### Fix Applied
+1. Scoped `Directory.Build.props` WDK/SDK NuGet imports strictly to `Condition="'$(ConfigurationType)' == 'Driver'"`.
+2. Added `<ReferenceOutputAssembly>false</ReferenceOutputAssembly>` to `cli/phylaram.vcxproj` ProjectReference.
+
+
 
 
