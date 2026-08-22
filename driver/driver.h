@@ -1,10 +1,13 @@
 #pragma once
 
-#include <ntddk.h>
+#include <ntifs.h>
+#include <ntimage.h>
 #include <wdf.h>
 #include "../shared/phylaram.h"
 
 #define PHYLA_POOL_TAG 'MLYP'
+
+NTSYSAPI NTSTATUS NTAPI ZwYieldExecution(VOID);
 
 typedef struct _PHYLA_FILE_CONTEXT {
     PPHYSICAL_MEMORY_RANGE Ranges;

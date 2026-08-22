@@ -39,3 +39,29 @@ Adopted the [microsoft/Windows-driver-samples](https://github.com/microsoft/Wind
 **Result:** ❌ FAILURE
 
 Identical root cause to CI run above. Same `error C1083: Cannot open include file: 'ntddk.h'` across all 4 driver source files.
+
+---
+
+## CI Run #32599238612 — PhylaRAM Continuous Integration
+**Trigger:** push to `main` (NuGet WDK & test-signing integration)
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (driver compilation)
+
+### Passed Steps:
+- `✓ Portable C++20 & Rust Tests (macOS)` (41s)
+- `✓ Setup MSBuild`
+- `✓ Setup NuGet`
+- `✓ Install WDK (NuGet)` — Successfully restored `Microsoft.Windows.WDK.x64` and `Microsoft.Windows.SDK.CPP.x64` (10.0.26100.1)
+- `✓ Setup Rust`
+
+### Failed Step: Build Driver (Release | x64)
+- `session.c`: `KAPC_STATE`, `KeStackAttachProcess`, `KeUnstackDetachProcess` missing header declarations (requires `<ntifs.h>`).
+- `session.c`: `IMAGE_DOS_HEADER`, `IMAGE_NT_HEADERS`, `RtlPcToFileHeader` missing `<ntimage.h>`.
+- `session.c`: `ZwYieldExecution` missing explicit forward declaration.
+- `ioctl.c`: `SIZE_MAX` undeclared in C17 mode (replaced with `((size_t)-1)`).
+
+### Fix Applied
+1. Included `<ntifs.h>` and `<ntimage.h>` in `driver/driver.h`.
+2. Declared `NTSYSAPI NTSTATUS NTAPI ZwYieldExecution(VOID);` in `driver/driver.h`.
+3. Replaced `SIZE_MAX` with `(((size_t)-1) / sizeof(PHYLA_MEMORY_RUN))` in `driver/ioctl.c`.
+

@@ -52,7 +52,7 @@ static NTSTATUS PhylaHandleGetRanges(_In_ WDFREQUEST Request,
         return STATUS_INVALID_DEVICE_STATE;
     }
 
-    if (ctx->RunCount > (SIZE_MAX / sizeof(PHYLA_MEMORY_RUN))) {
+    if (ctx->RunCount > (((size_t)-1) / sizeof(PHYLA_MEMORY_RUN))) {
         return STATUS_INTEGER_OVERFLOW;
     }
 
