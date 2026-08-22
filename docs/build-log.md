@@ -172,6 +172,30 @@ Placed the WDK and SDK NuGet props imports inside `driver/Directory.Build.props`
 ### Fix Applied:
 Added `<EnableUAC>false</EnableUAC>` inside `<Link>` in `cli/phylaram.vcxproj` to disable the conflicting default UAC snippet generation, allowing `phylaram.manifest` to define the execution level.
 
+---
+
+## CI Run #32600132275 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Commit:** `73ace3c` ("fix(build): set EnableUAC to false to avoid mt.exe manifest conflict")
+**Runner:** `windows-2022` & `macos-latest`
+**Result:** ✅ **SUCCESS (100% Green)**
+
+### Pipeline Summary:
+1. **`test-portable` (macOS Latest — 54s):**
+   - `✓ C++20 Unit Tests` (`test_range_algebra`, `test_mock_acquire`, `test_map_json`, `test_cli_parser` all passed with zero errors under `-std=c++20 -Wall -Wextra -Werror`)
+   - `✓ Rust Tests & Clippy` (`cargo fmt --check`, `cargo clippy -- -D warnings`, and all unit/property/e2e tests passed)
+2. **`build-windows` (Windows Server 2022 — 2m 17s):**
+   - `✓ Setup MSBuild & NuGet`
+   - `✓ Install WDK (NuGet)` (Restored `Microsoft.Windows.WDK.x64` + `Microsoft.Windows.SDK.CPP` 10.0.26100.1)
+   - `✓ Setup Rust Toolchain`
+   - `✓ Build Driver (Release | x64)` (`driver/phylaram.vcxproj` built `bin\phylaram.sys` under KMDF 1.15 with `/W4 /WX /guard:cf /std:c17`)
+   - `✓ Build CLI (Release | x64)` (`cli/phylaram.vcxproj` built `bin\phylaram.exe` under MSVC `/W4 /WX /guard:cf /std:c++20` embedding `bin\phylaram.sys` and manifest)
+   - `✓ Build Rust Verifier` (`cargo build --release` generated `bin\phylaram-verify.exe`)
+   - `✓ Test-Sign Binaries` (PowerShell generated SHA-256 Authenticode code-signing certificate and signed `bin\phylaram.sys` and `bin\phylaram.exe` via `signtool.exe`)
+   - `✓ Package Artifacts` (Bundled `dist/PhylaRAM-0.1.0-alpha-TEST-SIGNED/` containing `phylaram.exe`, `phylaram.sys`, `phylaram-verify.exe`, `README.txt`, `LICENSE.txt`)
+   - `✓ Upload Build Artifacts` (Published `PhylaRAM-0.1.0-alpha-TEST-SIGNED` artifact)
+
+
 
 
 
