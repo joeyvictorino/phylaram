@@ -1,0 +1,80 @@
+name: Bug Report
+description: Report a defect, acquisition failure, or bug in PhylaRAM
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with PhylaRAM. To help us reproduce and resolve the problem, please provide accurate environment details.
+
+  - type: input
+    id: os_version
+    attributes:
+      label: Windows Version and Build Number
+      description: Exact Windows version and build (e.g. Windows 11 23H2 Build 22631.3880)
+      placeholder: Windows 11 Build 22631.xxxx
+    validations:
+      required: true
+
+  - type: dropdown
+    id: vbs_hvci_state
+    attributes:
+      label: VBS / HVCI (Memory Integrity) Status
+      description: Is Virtualization-Based Security (VBS) or Memory Integrity (HVCI) enabled?
+      options:
+        - "Enabled (Default on Windows 11)"
+        - "Disabled"
+        - "Unknown / Not Checked"
+    validations:
+      required: true
+
+  - type: input
+    id: ram_size
+    attributes:
+      label: Physical RAM Configuration
+      description: Total physical RAM and NUMA/ReBAR configuration (e.g. 32 GB DDR5, Dual Channel)
+      placeholder: 32 GB
+    validations:
+      required: true
+
+  - type: input
+    id: phylaram_version
+    attributes:
+      label: PhylaRAM Version
+      description: Version of PhylaRAM used (e.g. 0.1.0-alpha)
+      placeholder: 0.1.0-alpha
+    validations:
+      required: true
+
+  - type: textarea
+    id: command_line
+    attributes:
+      label: Command Line Invocation
+      description: Exact command line used to invoke PhylaRAM
+      placeholder: phylaram.exe E:\evidence\mem.raw
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual Behavior & Terminal Output
+      description: Exact console output, error messages, or exit codes
+    validations:
+      required: true
+
+  - type: textarea
+    id: map_json
+    attributes:
+      label: Provenance Map Sidecar (`.map.json`)
+      description: If generated, please paste the contents of `<output>.map.json` here (redacting any private details if necessary)
+      render: json

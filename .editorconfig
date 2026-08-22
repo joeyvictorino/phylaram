@@ -1,0 +1,31 @@
+# EditorConfig configuration for PhylaRAM
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+indent_style = space
+indent_size = 4
+
+[*.{c,h,cpp,hpp}]
+indent_size = 4
+
+[*.rs]
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.props]
+indent_size = 2
+
+[*.config]
+indent_size = 2
+
+[*.vcxproj]
+indent_size = 2
+
+[*.sln]
+indent_style = tab

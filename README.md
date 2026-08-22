@@ -1,46 +1,69 @@
 # PhylaRAM
 
-Live physical-memory acquisition for modern Windows.
+> **Live physical-memory acquisition for modern Windows with byte-accurate error isolation, live kernel hints, and zero vendor lock-in.**
 
-PhylaRAM is a small forensic acquisition utility for capturing live physical RAM from x64 Windows 10 version 2004 or later and Windows 11 into a flat raw memory image.
-
-```text
-phylaram.exe memory.raw
-```
-
-**Physical offsets preserved. Partial reads preserved. Unreadable memory never silently reported as acquired.**
+[![CI](https://github.com/joeyvictorino/phylaram/actions/workflows/ci.yml/badge.svg)](https://github.com/joeyvictorino/phylaram/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.0--alpha-orange.svg)](CHANGELOG.md)
 
 ---
 
-## A Love Letter to the DFIR Community
+> [!WARNING]
+> **Pre-Release Status (v0.1.0-alpha):** Binaries produced in CI are test-signed with a self-signed certificate. To load the kernel driver (`phylaram.sys`) on a test VM, test-signing mode must be enabled:
+> ```cmd
+> bcdedit /set testsigning on
+> :: Reboot required
+> ```
+> Production EV / WHQL attestation signing is planned for post-validation releases.
 
-> *I built **PhylaRAM** as an open-source love letter to the digital forensics and incident response (DFIR) community.*
-> 
-> *Recently, while working an active, high-severity incident response case, our team needed an immediate, reliable physical memory acquisition tool for a modern Windows 11 endpoint with Virtualization-Based Security (VBS) and Memory Integrity (HVCI) enabled. Instead of being able to download a clean tool and immediately start triage, we were met with broken legacy utilities that bluescreened the host, or commercial tools trapped behind corporate registration gates, demo requests, and vendor sales funnels.*
-> 
-> *In the middle of a live intrusion, every second matters. Evidence in volatile memory perishes rapidly. Responders should never have to wait hours for a sales rep to email a license key just to preserve critical forensic evidence.*
-> 
-> *PhylaRAM is 100% open source, free forever, mathematically verified, and purpose-built for real-world defenders.*
+---
 
-## Output
+## The Three Core Differentiators
 
-Every acquisition produces an evidence bundle:
+| # | Differentiator | Why It Matters to DFIR |
+| :---: | :--- | :--- |
+| **1** | **Strict Physical Addressing (`file offset == physical address`)** | Hardware MMIO gaps and unallocated address spaces remain non-allocated sparse extents on NTFS/ReFS. The flat RAW image matches the physical bus layout 1:1 without synthetic zero-inflation. |
+| **2** | **Forensic Truth (`UNREADABLE != ZERO`)** | If a 16 MiB read fails, every transferred byte is preserved. Unreadable pages are isolated at 4 KiB page boundaries and recorded in `memory.raw.map.json` with their exact `NTSTATUS`. Memory is **never** silently fabricated as zero data. |
+| **3** | **Live Ring 0 Kernel Hints (`phylaram-map-2`)** | Captures the System process Directory Table Base (CR3), executing CPU KPCR, NTOSKRNL base address, and image size directly from Ring 0 during acquisition, eliminating slow KDBG/DTB brute-force scans in Volatility 3 and MemProcFS. |
+
+---
+
+## Comparison with Existing Acquisition Tools
+
+| Capability | **PhylaRAM** | WinPmem (v3/v4) | DumpIt (Comae) | Magnet RAM Capture | Belkasoft RAM Capturer |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **License & Availability** | **100% Open Source (MIT)** | Open Source (GPL/Apache) | Commercial (Locked) | Freeware (Registration Gate) | Freeware (Registration Gate) |
+| **Flat RAW (`offset == phys`)** | **Yes (Sparse NTFS/ReFS)** | Yes / Raw | RAW / Crash Dump | RAW | RAW |
+| **Error Isolation (`UNREADABLE != ZERO`)** | **Yes (4 KiB + NTSTATUS in Map)** | Partial / Zero-fills | Zero-fills | Zero-fills | Zero-fills |
+| **Live Kernel Hints (CR3 / KPCR / NT Base)** | **Yes (`.map.json`)** | No | No | No | No |
+| **Memory Acquisition Method** | **`MmCopyMemory(PHYSICAL)`** | `\Device\PhysicalMemory` / PTE | Proprietary Driver | Proprietary Driver | Proprietary Driver |
+| **Non-PnP Control KMDF Driver** | **Yes (Exclusive Access)** | Legacy / Monolithic | Monolithic | Monolithic | Monolithic |
+| **Bandwidth Throttling (`--rate-limit`)** | **Yes** | No | No | No | No |
+| **Stdout Streaming (`-`)** | **Yes** | No | No | No | No |
+| **Independent Offline Verifier** | **Yes (Rust `phylaram-verify`)** | No | No | No | No |
+
+---
+
+## Output Evidence Bundle
+
+Every successful acquisition produces three files:
 
 ```text
-memory.raw
-memory.raw.map.json
-memory.raw.sha256
+E:\Evidence\
+├── memory.raw           # Flat physical RAM image (sparse NTFS/ReFS)
+├── memory.raw.map.json  # Provenance map with run topology & kernel hints
+└── memory.raw.sha256    # Cryptographic checksum of logical RAW image
 ```
 
-### Provenance Map (`memory.raw.map.json`)
+### Provenance Map Example (`memory.raw.map.json`)
 
-The `.map.json` sidecar identifies the tool and documents exact physical run topologies and unreadable spans:
+*(Illustrative example conforming to [`phylaram-map-2`](docs/MAP_SCHEMA.md))*
 
 ```json
 {
   "producer": "PhylaRAM",
-  "producer_version": "1.0.0",
-  "schema": "phylaram-map-1",
+  "producer_version": "0.1.0-alpha",
+  "schema": "phylaram-map-2",
   "status": "complete",
   "logical_size": 17179869184,
   "physical_bytes": 16909336576,
@@ -48,6 +71,17 @@ The `.map.json` sidecar identifies the tool and documents exact physical run top
   "unreadable_bytes": 0,
   "topology_changed": false,
   "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "kernel_hints": {
+    "hypervisor_present": true,
+    "directory_table_base": "0x1AA002",
+    "kpcr_address": "0xFFFFF80023400000",
+    "kernel_base": "0xFFFFF80023000000",
+    "kernel_size": 11534336,
+    "major_version": 10,
+    "minor_version": 0,
+    "build_number": 22631,
+    "processors": 8
+  },
   "ranges": [
     {"driver_run": 0, "start": "0x1000", "length": 651264},
     {"driver_run": 1, "start": "0x100000", "length": 16908685312}
@@ -58,106 +92,113 @@ The `.map.json` sidecar identifies the tool and documents exact physical run top
 
 ---
 
-## Core Characteristics
-
-- **Single Portable Executable:** One self-contained executable (`phylaram.exe`) with an embedded signed driver (`phylaram.sys`). No installer required.
-- **Strict Physical Addressing:** `file offset == physical address`. Hardware MMIO gaps and unreadable pages remain unallocated sparse extents on NTFS and ReFS without zero-byte block inflation.
-- **Byte-Accurate Error Isolation:** If a 16 MiB read partially fails, every successfully transferred byte is preserved. Unreadable pages are isolated at 4 KiB granularity and recorded in the provenance map with their exact NTSTATUS.
-- **Evidence Immutability:** Preflight collision protection checks for existing targets and staging files. Data is staged to `memory.raw.partial` and promoted atomically only upon valid completion.
-- **Volatility & MemProcFS Compatible:** Directly parsable by Volatility 3 (`windows.info`, `windows.pslist`, `windows.malfind`) and MemProcFS.
-- **Hardened Windows Ready:** Operates with Secure Boot, Virtualization-Based Security (VBS), and Hypervisor-Protected Code Integrity (HVCI / Memory Integrity) fully enabled.
-
----
-
-## Architecture & Lifecycle
-
-1. `phylaram.exe` extracts the embedded signed driver to a secure private directory with a restricted ACL granting access only to `SYSTEM` and `BUILTIN\Administrators`.
-2. Installs and starts a demand-start kernel service through documented Service Control Manager (SCM) APIs.
-3. Opens `\\.\PhylaRAM`, creating an immutable physical memory topology snapshot (`MmGetPhysicalMemoryRangesEx2`).
-4. Acquires RAM via run-relative `METHOD_OUT_DIRECT` IOCTLs (`MmCopyMemory` with `MM_COPY_MEMORY_PHYSICAL`).
-5. Writes sparse extents to disk and computes the logical SHA-256 hash.
-6. Closes the device handle, stops and deletes the service, and cleans up the temporary driver file.
-
----
-
 ## Usage
 
-```text
-phylaram.exe <output.raw> [--quiet] [--no-hash]
+Run `phylaram.exe` from an elevated Command Prompt or PowerShell (Administrator privileges required):
+
+```cmd
+phylaram.exe <output.raw | -> [options]
 ```
 
 ### Options
 
-- `--quiet`: Suppress interactive terminal progress and statistics.
-- `--no-hash`: Skip SHA-256 calculation and `.sha256` sidecar generation.
-- `--help`, `-h`: Display command-line usage.
+| Option | Description |
+| :--- | :--- |
+| `<output.raw>` | Destination path for the RAW image (supports local and UNC network paths). |
+| `-` | Stream raw physical memory directly to standard output (`stdout`). |
+| `--rate-limit <MB>` | Throttle maximum acquisition bandwidth in MB/s (e.g. `--rate-limit 150`). |
+| `--quiet` | Suppress interactive progress display and statistics. |
+| `--no-hash` | Skip SHA-256 computation and `.sha256` sidecar creation. |
+| `--help`, `-h` | Display usage instructions. |
 
 ### Exit Codes
 
-- `0` **COMPLETE**: All physical RAM ranges acquired successfully, topology unchanged, hash verified.
-- `2` **INCOMPLETE**: Acquisition reached the end of RAM, but one or more pages were unreadable or memory topology shifted.
-- `1` **FAILED**: Acquisition was cancelled (Ctrl+C), encountered an I/O failure, permission failure, or unsupported OS.
+| Exit Code | Meaning |
+| :---: | :--- |
+| `0` | **COMPLETE:** All physical memory acquired cleanly, topology unchanged. |
+| `2` | **INCOMPLETE:** Reached end of memory, but one or more pages were unreadable or topology shifted. |
+| `1` | **FAILED:** Acquisition aborted (Ctrl+C, I/O error, elevation failure, unsupported OS). |
 
 ---
 
-## SANS FOR500 / FOR508 Courseware Guide
+## Validating in a Lab / VM with Volatility 3
 
-For forensic instructors, lab authors, and DFIR practitioners integrating PhylaRAM into courseware, see the dedicated [**SANS FOR500 & FOR508 Instructor Guide**](docs/SANS_FOR500_FOR508_GUIDE.md).
+1. **Enable Test-Signing on your VM:**
+   ```cmd
+   bcdedit /set testsigning on
+   shutdown /r /t 0
+   ```
 
----
+2. **Acquire Live Memory:**
+   ```cmd
+   phylaram.exe C:\evidence\mem.raw
+   ```
 
-## Dual-Mode Architecture & Visual Experience
+3. **Verify Bundle with Offline Verifier:**
+   ```bash
+   phylaram-verify C:\evidence\mem.raw C:\evidence\mem.raw.map.json C:\evidence\mem.raw.sha256
+   ```
 
-PhylaRAM combines an ultra-fast, zero-overhead **CLI** for power users and automation with an **Apple-inspired dark glassmorphic GUI** for intuitive one-click acquisition and live physical memory visualization. See the complete design specification in [**PhylaRAM Dual-Mode Architecture & Visual Identity**](docs/PHYLARAM_GUI_AND_VISUAL_SPEC.md).
+4. **Triage with Volatility 3:**
+   ```bash
+   # System information
+   python vol.py -f mem.raw windows.info
 
----
+   # Process listing
+   python vol.py -f mem.raw windows.pslist
 
-## Strategy & Beating Commercial Acquisition Tools
-
-For an in-depth breakdown of how PhylaRAM outclasses legacy commercial tools (HVCI immunity, zero silent-zero fabrication, micro-footprint preservation, and open RAW architecture), see [**PhylaRAM Product Strategy & Commercial Comparison**](docs/BEATING_COMMERCIAL_TOOLS_AND_PRODUCT_STRATEGY.md).
+   # Scan for injected code
+   python vol.py -f mem.raw windows.malfind
+   ```
 
 ---
 
 ## Offline Verification Tool (`phylaram-verify`)
 
-An independent offline verification tool written in Rust is available in `tools/phylaram-verify/`:
+PhylaRAM includes an independent offline verifier written in Rust (`tools/phylaram-verify/`):
 
 ```bash
-phylaram-verify memory.raw memory.raw.map.json [memory.raw.sha256]
+phylaram-verify <memory.raw> <memory.raw.map.json> [memory.raw.sha256]
 ```
 
----
+It validates:
+- Logical RAW file size equals `HighestPhysicalEnd`.
+- Exact match between acquired/unreadable byte counts and physical memory runs.
+- Cryptographic SHA-256 hash match over the logical address space.
 
 ---
 
-## Windows Quick Start & Build
+## Building from Source
 
 ### Requirements
-- Windows 10 (version 2004 / build 19041 or later) or Windows 11 (x64)
-- Visual Studio 2022 with **Desktop development with C++**
-- Windows 10/11 SDK & Windows Driver Kit (WDK)
-- Administrator privileges
+- Visual Studio 2022 (C++ Desktop Development)
+- Windows Driver Kit (WDK) 10.0.26100+ (or restored via NuGet in CI)
+- Rust toolchain (for `phylaram-verify`)
 
-### Automated 1-Click Build (Windows)
-Open an elevated Command Prompt or Developer Command Prompt for VS 2022 and run:
+### Build Steps (Windows)
 ```cmd
-scripts\build_windows.bat
-```
-This builds `bin\phylaram.sys`, embeds it into `bin\phylaram.exe`, compiles `bin\phylaram-verify.exe`, and packages everything to `dist\PhylaRAM-v1.0-x64\`.
-
-### Test Signing (For Development / Test VMs)
-To test on a development VM without an EV certificate:
-```cmd
-scripts\setup_test_signing.bat
-```
-*(Ensure `bcdedit /set testsigning on` is run in an elevated command prompt on the test VM followed by a reboot).*
-
-### Running PhylaRAM
-Open an Administrator Command Prompt and run:
-```cmd
-phylaram.exe E:\Evidence\memory.raw
+nuget restore packages.config -PackagesDirectory packages
+msbuild PhylaRAM.sln /p:Configuration=Release /p:Platform=x64 /v:minimal /m
 ```
 
-## Engineering Standard
+### Portable Test Suite (macOS / Linux / Windows)
+```bash
+clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
+clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
+clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
+clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
 
-All development, review, and verification follow the canonical [`ENGINEERING_STANDARD.md`](ENGINEERING_STANDARD.md).
+cd tools/phylaram-verify && cargo test
+```
+
+---
+
+## Origin & Motivation
+
+> *PhylaRAM was created during an active incident response engagement where we needed to acquire memory from a modern Windows host, but found existing tools either outdated or locked behind vendor registration gates and sales funnels. In a live incident, responders need reliable, verifiable tools immediately — without sales friction.*
+
+---
+
+## License
+
+PhylaRAM is licensed under the [MIT License](LICENSE).

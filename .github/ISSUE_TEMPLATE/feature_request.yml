@@ -1,0 +1,32 @@
+name: Feature Request
+description: Propose a new feature, platform support, or enhancement for PhylaRAM
+title: "[FEATURE]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement to PhylaRAM! Please describe the use case and how it impacts digital forensics or incident response workflows.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Is your feature request related to a specific problem or DFIR workflow bottleneck?
+      placeholder: "When triaging endpoints with..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: Clear and concise description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What workarounds or alternative approaches have you evaluated?
