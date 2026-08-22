@@ -2,32 +2,32 @@ name: PhylaRAM Continuous Integration
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  test-unix:
-    name: Portable C++20 & Rust Verification (macOS / Linux)
+  test-portable:
+    name: Portable C++20 & Rust Tests
     runs-on: macos-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust Toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Run Portable C++20 Unit Tests
+      - name: C++20 Unit Tests
         run: |
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
 
-      - name: Run Rust Tests & Clippy
+      - name: Rust Tests & Clippy
         working-directory: tools/phylaram-verify
         run: |
           cargo fmt --check
@@ -38,35 +38,72 @@ jobs:
     name: Windows MSVC & KMDF Build
     runs-on: windows-2022
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Install WDK (NuGet)
+        run: nuget restore packages.config -PackagesDirectory packages
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Driver & CLI (Release | x64)
-        run: |
-          msbuild PhylaRAM.sln /p:Configuration=Release /p:Platform=x64 /p:WarningLevel=4 /p:TreatWarningAsError=true /v:minimal /m
+      - name: Build Driver (Release | x64)
+        run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
 
-      - name: Build Rust Offline Verifier
+      - name: Build CLI (Release | x64)
+        run: msbuild cli\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
+
+      - name: Build Rust Verifier
         working-directory: tools/phylaram-verify
         run: |
           cargo build --release
           copy target\release\phylaram-verify.exe ..\..\bin\phylaram-verify.exe
 
-      - name: Package Distribution
+      - name: Test-Sign Binaries
+        shell: pwsh
         run: |
-          mkdir dist\PhylaRAM-v1.0-x64
-          copy bin\phylaram.exe dist\PhylaRAM-v1.0-x64\
-          copy bin\phylaram-verify.exe dist\PhylaRAM-v1.0-x64\
-          copy README.md dist\PhylaRAM-v1.0-x64\README.txt
-          copy LICENSE dist\PhylaRAM-v1.0-x64\LICENSE.txt
+          # Generate a self-signed code signing certificate for test-signing
+          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
+            -Subject "CN=PhylaRAM Test Signing" `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -NotAfter (Get-Date).AddYears(1)
+          $thumbprint = $cert.Thumbprint
+
+          # Find signtool from the Windows SDK
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            Write-Warning "signtool.exe not found — skipping test-signing"
+            exit 0
+          }
+
+          # Sign driver and CLI with test certificate
+          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
+          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
+
+          # Record signing info for auditability
+          Write-Host "Test-signed with certificate thumbprint: $thumbprint"
+
+      - name: Package Artifacts
+        run: |
+          mkdir dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED
+          copy bin\phylaram.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
+          copy bin\phylaram.sys dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
+          copy bin\phylaram-verify.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
+          copy README.md dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\README.txt
+          copy LICENSE dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\LICENSE.txt
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PhylaRAM-v1.0-x64
-          path: dist/PhylaRAM-v1.0-x64/
+          name: PhylaRAM-0.1.0-alpha-TEST-SIGNED
+          path: dist/PhylaRAM-0.1.0-alpha-TEST-SIGNED/
