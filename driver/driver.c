@@ -2,6 +2,12 @@
 
 DRIVER_INITIALIZE DriverEntry;
 
+#pragma alloc_text(INIT, DriverEntry)
+#pragma alloc_text(PAGE, PhylaEvtDriverUnload)
+#pragma alloc_text(PAGE, PhylaEvtFileCreate)
+#pragma alloc_text(PAGE, PhylaEvtFileCleanup)
+#pragma alloc_text(PAGE, PhylaEvtFileClose)
+
 static NTSTATUS PhylaCreateControlDevice(_In_ WDFDRIVER Driver)
 {
     NTSTATUS status;
@@ -121,7 +127,8 @@ VOID PhylaEvtFileCleanup(_In_ WDFFILEOBJECT FileObject)
 
 VOID PhylaEvtFileClose(_In_ WDFFILEOBJECT FileObject)
 {
-    PPHYLA_FILE_CONTEXT ctx = PhylaGetFileContext(FileObject);
-    PAGED_CODE();
-    PhylaSessionRelease(ctx);
+    // Cleanup already called PhylaSessionRelease via EvtFileCleanup.
+    // EvtFileClose is a no-op — it exists only as a safety net and
+    // PhylaSessionRelease is idempotent (InterlockedExchangePointer).
+    UNREFERENCED_PARAMETER(FileObject);
 }

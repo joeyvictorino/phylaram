@@ -74,7 +74,7 @@ bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& s)
 
     f << "{\n";
     f << "  \"producer\": \"PhylaRAM\",\n";
-    f << "  \"producer_version\": \"1.0.0\",\n";
+    f << "  \"producer_version\": \"0.1.0-alpha\",\n";
     f << "  \"schema\": \"phylaram-map-2\",\n";
     f << "  \"status\": \"" << status << "\",\n";
     f << "  \"logical_size\": " << s.logicalSize << ",\n";
@@ -87,7 +87,6 @@ bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& s)
     if (s.hints.available) {
         f << "  \"kernel_hints\": {\n";
         f << "    \"hypervisor_present\": " << (s.hints.hypervisorPresent ? "true" : "false") << ",\n";
-        f << "    \"vbs_active\": " << (s.hints.vbsActive ? "true" : "false") << ",\n";
         f << "    \"directory_table_base\": \"" << Hex64(s.hints.directoryTableBase) << "\",\n";
         f << "    \"kpcr_address\": \"" << Hex64(s.hints.kpcrAddress) << "\",\n";
         f << "    \"kernel_base\": \"" << Hex64(s.hints.kernelBase) << "\",\n";

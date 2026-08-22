@@ -1,6 +1,11 @@
 #include "driver.h"
 #include <intrin.h>
 
+#pragma alloc_text(PAGE, PhylaSessionBegin)
+#pragma alloc_text(PAGE, PhylaSessionRelease)
+#pragma alloc_text(PAGE, PhylaSessionEnd)
+#pragma alloc_text(PAGE, PhylaQueryKernelHints)
+
 static ULONG PhylaCountRanges(_In_ PPHYSICAL_MEMORY_RANGE Ranges)
 {
     ULONG count = 0;
@@ -154,6 +159,7 @@ NTSTATUS PhylaQueryKernelHints(_Out_ PPHYLA_KERNEL_HINTS Hints)
     int cpuInfo[4] = { 0 };
     PVOID kernelBase = NULL;
     PVOID sectionHandle = NULL;
+    KAPC_STATE apcState;
 
     PAGED_CODE();
 
@@ -171,7 +177,17 @@ NTSTATUS PhylaQueryKernelHints(_Out_ PPHYLA_KERNEL_HINTS Hints)
     Hints->NumberOfProcessors = (ULONG)KeQueryActiveProcessorCountEx(ALL_PROCESSOR_GROUPS);
 
 #if defined(_M_AMD64) || defined(_M_X64)
+    // SAFETY: Read the System process DirectoryTableBase (CR3) by briefly
+    // attaching to PsInitialSystemProcess. This gives Volatility 3 and
+    // MemProcFS the exact DTB they need to begin analysis without scanning.
+    // KeStackAttachProcess/KeUnstackDetachProcess is safe at PASSIVE_LEVEL.
+    KeStackAttachProcess(PsInitialSystemProcess, &apcState);
     Hints->DirectoryTableBase = (ULONGLONG)__readcr3();
+    KeUnstackDetachProcess(&apcState);
+
+    // KPCR: This is the KPCR of whichever CPU we happen to be running on.
+    // It is NOT guaranteed to be CPU 0. Downstream tools should treat this
+    // as a starting hint, not a definitive Core 0 KPCR address.
     Hints->KpcrAddress = (ULONGLONG)__readgsqword(0x18);
 #endif
 
@@ -192,9 +208,11 @@ NTSTATUS PhylaQueryKernelHints(_Out_ PPHYLA_KERNEL_HINTS Hints)
         Hints->HypervisorPresent = 1;
     }
 
-    if (Hints->HypervisorPresent && build >= 14393) {
-        Hints->VbsActive = 1;
-    }
+    // NOTE: VBS/HVCI detection removed. Hypervisor-present (CPUID.01H:ECX[31])
+    // does NOT imply VBS is active — it could be VMware, VirtualBox, or bare
+    // Hyper-V without VBS. Proper detection requires ZwQuerySystemInformation
+    // with SystemCodeIntegrityInformation which is undocumented and fragile.
+    // A forensic tool must not guess.
 
     return STATUS_SUCCESS;
 }

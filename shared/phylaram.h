@@ -27,6 +27,9 @@
 #define IOCTL_PHYLA_QUERY_HINTS \
     CTL_CODE(FILE_DEVICE_UNKNOWN, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS)
 
+#define PHYLA_VERSION_STRING    "0.1.0-alpha"
+#define PHYLA_VERSION_WSTRING   L"0.1.0-alpha"
+
 typedef struct _PHYLA_MEMORY_RUN {
     ULONGLONG BaseAddress;
     ULONGLONG NumberOfBytes;
@@ -65,14 +68,14 @@ typedef struct _PHYLA_END_RESULT {
 typedef struct _PHYLA_KERNEL_HINTS {
     ULONG Version;
     ULONG HypervisorPresent;
-    ULONG VbsActive;
     ULONG MajorVersion;
     ULONG MinorVersion;
     ULONG BuildNumber;
     ULONG NumberOfProcessors;
     ULONG Reserved;
+    ULONG Reserved2;
     ULONGLONG DirectoryTableBase;  // System process CR3 / DTB for instant Volatility/WinDbg resolution
-    ULONGLONG KpcrAddress;         // Core 0 KPCR
+    ULONGLONG KpcrAddress;         // Current CPU KPCR (hint only)
     ULONGLONG KernelBase;          // NTOSKRNL base address
     ULONGLONG KernelSize;          // NTOSKRNL image size
 } PHYLA_KERNEL_HINTS, *PPHYLA_KERNEL_HINTS;

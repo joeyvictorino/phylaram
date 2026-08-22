@@ -161,8 +161,6 @@ bool IsAdministrator();
 bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& summary);
 bool WriteSha256Sidecar(const std::wstring& path, const std::wstring& rawFileName, const std::string& sha256);
 bool PromoteStagingFile(const std::wstring& stagingPath, const std::wstring& finalPath);
-bool CapturePagefiles(const std::wstring& outputBase, std::vector<std::wstring>& capturedFiles);
-bool WriteCrashDumpHeader(HANDLE file, const AcquisitionSummary& summary);
 bool Acquire(IDeviceSession& device,
              IRawWriter& writer,
              IHasher* hasher,

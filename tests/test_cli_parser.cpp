@@ -7,8 +7,6 @@ struct CliOptions {
     std::wstring output;
     bool quiet = false;
     bool hashEnabled = true;
-    bool withPagefile = false;
-    bool generateDmp = false;
     uint32_t rateLimitMBps = 0;
     bool showHelp = false;
     bool valid = false;
@@ -27,10 +25,6 @@ CliOptions ParseArgs(const std::vector<std::wstring>& args) {
             opt.quiet = true;
         } else if (arg == L"--no-hash") {
             opt.hashEnabled = false;
-        } else if (arg == L"--with-pagefile") {
-            opt.withPagefile = true;
-        } else if (arg == L"--dmp") {
-            opt.generateDmp = true;
         } else if (arg == L"--rate-limit" || arg == L"--throttle") {
             if (i + 1 < args.size()) {
                 opt.rateLimitMBps = static_cast<uint32_t>(std::stoi(args[++i]));
@@ -66,21 +60,17 @@ int main() {
         assert(opt.output == L"memory.raw");
         assert(!opt.quiet);
         assert(opt.hashEnabled);
-        assert(!opt.withPagefile);
-        assert(!opt.generateDmp);
         assert(opt.rateLimitMBps == 0);
         assert(!opt.showHelp);
     }
 
-    // 2. Advanced flags: --quiet, --no-hash, --with-pagefile, --dmp, --rate-limit
+    // 2. Advanced flags: --quiet, --no-hash, --rate-limit
     {
-        auto opt = ParseArgs({L"C:\\Evidence\\image.raw", L"--quiet", L"--no-hash", L"--with-pagefile", L"--dmp", L"--rate-limit", L"250"});
+        auto opt = ParseArgs({L"C:\\Evidence\\image.raw", L"--quiet", L"--no-hash", L"--rate-limit", L"250"});
         assert(opt.valid);
         assert(opt.output == L"C:\\Evidence\\image.raw");
         assert(opt.quiet);
         assert(!opt.hashEnabled);
-        assert(opt.withPagefile);
-        assert(opt.generateDmp);
         assert(opt.rateLimitMBps == 250);
     }
 

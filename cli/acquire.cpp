@@ -33,7 +33,7 @@ bool Acquire(IDeviceSession& device,
         return false;
     }
 
-    // Query live Ring 0 forensic telemetry (CR3, KPCR, NT Base, VBS)
+    // Query live Ring 0 kernel hints (System DTB, KPCR, NT Base)
     device.QueryHints(summary.hints);
 
     summary.logicalSize = highestEnd;

@@ -67,8 +67,6 @@
     <ClCompile Include="sha256.cpp" />
     <ClCompile Include="map.cpp" />
     <ClCompile Include="acquire.cpp" />
-    <ClCompile Include="pagefile.cpp" />
-    <ClCompile Include="crashdump.cpp" />
     <ClInclude Include="phylaram.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="..\shared\phylaram.h" />

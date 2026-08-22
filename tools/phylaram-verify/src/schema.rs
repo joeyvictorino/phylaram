@@ -41,8 +41,6 @@ pub struct KernelHintsMap {
     #[serde(default)]
     pub hypervisor_present: bool,
     #[serde(default)]
-    pub vbs_active: bool,
-    #[serde(default)]
     pub directory_table_base: Option<String>,
     #[serde(default)]
     pub kpcr_address: Option<String>,

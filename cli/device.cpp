@@ -128,7 +128,6 @@ bool DeviceSession::QueryHints(KernelHints& hints)
 
     hints.available = true;
     hints.hypervisorPresent = (raw.HypervisorPresent != 0);
-    hints.vbsActive = (raw.VbsActive != 0);
     hints.majorVersion = raw.MajorVersion;
     hints.minorVersion = raw.MinorVersion;
     hints.buildNumber = raw.BuildNumber;

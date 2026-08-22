@@ -69,7 +69,7 @@ bool IsSupportedWindows(std::wstring& reason)
 
 static void Usage()
 {
-    std::wcout << L"PhylaRAM 1.0 - Live physical-memory acquisition for Windows\n\n"
+    std::wcout << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
                << L"Usage:\n"
                << L"  phylaram.exe <output.raw | -> [options]\n\n"
                << L"Arguments:\n"
@@ -77,8 +77,6 @@ static void Usage()
                << L"  -                   Stream raw physical memory directly to standard output (stdout)\n\n"
                << L"Options:\n"
                << L"  --rate-limit <MB>   Throttle maximum acquisition bandwidth in MB/s (e.g. --rate-limit 200)\n"
-               << L"  --with-pagefile     Capture active pagefile.sys and swapfile.sys across all drives\n"
-               << L"  --dmp               Generate companion Microsoft WinDbg 64-bit crash dump header\n"
                << L"  --quiet             Suppress statistics and interactive progress output\n"
                << L"  --no-hash           Skip logical SHA-256 calculation and .sha256 sidecar\n"
                << L"  --help, -h          Display this help message\n";
@@ -93,8 +91,6 @@ int wmain(int argc, wchar_t** argv)
 
     bool quiet = false;
     bool hashEnabled = true;
-    bool withPagefile = false;
-    bool generateDmp = false;
     uint32_t rateLimitMBps = 0;
     std::wstring output;
 
@@ -104,10 +100,6 @@ int wmain(int argc, wchar_t** argv)
             quiet = true;
         } else if (arg == L"--no-hash") {
             hashEnabled = false;
-        } else if (arg == L"--with-pagefile") {
-            withPagefile = true;
-        } else if (arg == L"--dmp") {
-            generateDmp = true;
         } else if (arg == L"--rate-limit" || arg == L"--throttle") {
             if (i + 1 < argc) {
                 rateLimitMBps = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -203,7 +195,7 @@ int wmain(int argc, wchar_t** argv)
         }
 
         if (!quiet && !isStdout) {
-            std::wcout << L"PhylaRAM 1.0 — Live RAM Capture for Windows\n"
+            std::wcout << L"PhylaRAM 0.1.0-alpha — Live RAM Capture for Windows\n"
                        << L"Physical memory : " << (totalBytes / (1024ull * 1024ull)) << L" MiB\n"
                        << L"Ranges          : " << runs.size() << L"\n"
                        << L"Output          : " << output << L"\n";
@@ -281,27 +273,6 @@ int wmain(int argc, wchar_t** argv)
                 break;
             }
 
-            // Optional WinDbg Crash Dump companion file
-            if (generateDmp) {
-                std::wstring dmpPath = output + L".dmp";
-                ScopedHandle dmpFile(CreateFileW(dmpPath.c_str(), GENERIC_WRITE, 0, nullptr,
-                                                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
-                if (dmpFile && WriteCrashDumpHeader(dmpFile.Get(), summary)) {
-                    if (!quiet) {
-                        std::wcout << L"Generated WinDbg 64-bit crash dump header: " << dmpPath << L"\n";
-                    }
-                }
-            }
-
-            // Optional multi-drive pagefile/swapfile acquisition
-            if (withPagefile) {
-                std::vector<std::wstring> pagefiles;
-                if (CapturePagefiles(output, pagefiles)) {
-                    if (!quiet) {
-                        std::wcout << L"Captured " << pagefiles.size() << L" backing pagefile/swapfile image(s).\n";
-                    }
-                }
-            }
         }
 
         if (!quiet && !isStdout) {

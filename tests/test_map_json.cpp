@@ -27,7 +27,7 @@ static std::string SerializeMapJson(const AcquisitionSummary& s)
 
     f << "{\n";
     f << "  \"producer\": \"PhylaRAM\",\n";
-    f << "  \"producer_version\": \"1.0.0\",\n";
+    f << "  \"producer_version\": \"0.1.0-alpha\",\n";
     f << "  \"schema\": \"phylaram-map-2\",\n";
     f << "  \"status\": \"" << status << "\",\n";
     f << "  \"logical_size\": " << s.logicalSize << ",\n";
@@ -40,7 +40,6 @@ static std::string SerializeMapJson(const AcquisitionSummary& s)
     if (s.hints.available) {
         f << "  \"kernel_hints\": {\n";
         f << "    \"hypervisor_present\": " << (s.hints.hypervisorPresent ? "true" : "false") << ",\n";
-        f << "    \"vbs_active\": " << (s.hints.vbsActive ? "true" : "false") << ",\n";
         f << "    \"directory_table_base\": \"" << Hex64(s.hints.directoryTableBase) << "\",\n";
         f << "    \"kpcr_address\": \"" << Hex64(s.hints.kpcrAddress) << "\",\n";
         f << "    \"kernel_base\": \"" << Hex64(s.hints.kernelBase) << "\",\n";
@@ -91,7 +90,6 @@ int main() {
         s.sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
         s.hints.available = true;
         s.hints.hypervisorPresent = true;
-        s.hints.vbsActive = true;
         s.hints.directoryTableBase = 0x1AA000;
         s.hints.kpcrAddress = 0xFFFFF80123450000ULL;
         s.hints.kernelBase = 0xFFFFF80112340000ULL;
@@ -106,7 +104,6 @@ int main() {
         assert(json.find("\"status\": \"complete\"") != std::string::npos);
         assert(json.find("\"kernel_hints\"") != std::string::npos);
         assert(json.find("\"directory_table_base\": \"0x1AA000\"") != std::string::npos);
-        assert(json.find("\"vbs_active\": true") != std::string::npos);
         assert(json.find("\"start\": \"0x1000\"") != std::string::npos);
     }
 

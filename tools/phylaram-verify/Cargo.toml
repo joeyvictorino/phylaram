@@ -1,6 +1,6 @@
 [package]
 name = "phylaram-verify"
-version = "1.0.0"
+version = "0.1.0-alpha"
 edition = "2021"
 authors = ["PhylaRAM Contributors"]
 description = "Independent offline verification tool for PhylaRAM raw memory images and provenance sidecars"

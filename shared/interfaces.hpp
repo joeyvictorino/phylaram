@@ -28,13 +28,12 @@ struct UnreadableSpan {
 struct KernelHints {
     bool available = false;
     bool hypervisorPresent = false;
-    bool vbsActive = false;
     uint32_t majorVersion = 0;
     uint32_t minorVersion = 0;
     uint32_t buildNumber = 0;
     uint32_t numberOfProcessors = 0;
-    uint64_t directoryTableBase = 0; // System CR3 for instant Volatility/WinDbg resolution
-    uint64_t kpcrAddress = 0;        // Core 0 KPCR
+    uint64_t directoryTableBase = 0; // System process CR3
+    uint64_t kpcrAddress = 0;        // Current CPU KPCR (not necessarily CPU 0)
     uint64_t kernelBase = 0;         // NTOSKRNL base
     uint64_t kernelSize = 0;         // NTOSKRNL image size
 };
