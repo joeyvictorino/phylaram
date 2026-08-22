@@ -111,8 +111,23 @@ Declared `NTSYSAPI PVOID NTAPI RtlPcToFileHeader(_In_ PVOID PcValue, _Out_ PVOID
 - `LINK : fatal error LNK1181: cannot open input file 'bcrypt.lib'` (Unconditional WDK NuGet props import in `Directory.Build.props` overrode user-mode SDK library directories for non-driver projects).
 
 ### Fix Applied
-1. Scoped `Directory.Build.props` WDK/SDK NuGet imports strictly to `Condition="'$(ConfigurationType)' == 'Driver'"`.
-2. Added `<ReferenceOutputAssembly>false</ReferenceOutputAssembly>` to `cli/phylaram.vcxproj` ProjectReference.
+1. Moved WDK props import directly into `driver/phylaram.vcxproj` so it is unconditionally applied during driver build without depending on early property evaluation in `Directory.Build.props`.
+2. Emptied `Directory.Build.props` to ensure user-mode CLI build is never polluted by kernel headers or library paths.
+3. Trimmed `packages.config` to `Microsoft.Windows.WDK.x64` only.
+
+---
+
+## CI Run #32599716320 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (driver compilation)
+
+### Root Cause:
+Conditioning `Directory.Build.props` on `$(ConfigurationType)` failed because `Directory.Build.props` is evaluated by MSBuild before the project's internal `<PropertyGroup Label="Configuration">` is parsed, causing `ConfigurationType` to be empty and WDK props to not be imported.
+
+### Fix Applied:
+Directly imported `Microsoft.Windows.WDK.x64.props` within `driver/phylaram.vcxproj` and kept `Directory.Build.props` empty, cleanly isolating kernel toolsets to the driver while leaving the user-mode CLI toolchain completely standard.
+
 
 
 

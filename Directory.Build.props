@@ -1,11 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
   <!--
-    Import WDK and SDK NuGet package targets for KMDF Driver projects in CI.
-    User-mode CLI projects use the standard Windows SDK pre-installed on the runner.
+    Root Directory.Build.props.
+    Driver project (driver/phylaram.vcxproj) imports WDK props directly.
   -->
-  <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props"
-          Condition="'$(ConfigurationType)' == 'Driver' and Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props')" />
-  <Import Project="$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props"
-          Condition="'$(ConfigurationType)' == 'Driver' and Exists('$(MSBuildThisFileDirectory)packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props')" />
 </Project>
