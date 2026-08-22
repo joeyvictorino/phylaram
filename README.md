@@ -33,13 +33,13 @@
 
 ## Comparison with Existing Acquisition Tools
 
-| Capability | **PhylaRAM** | WinPmem (v3/v4) | DumpIt (Comae) | Magnet RAM Capture | Belkasoft RAM Capturer |
+| Capability | **PhylaRAM** | WinPmem (v3/v4) | DumpIt (Magnet / Comae) | Magnet RAM Capture | Belkasoft RAM Capturer |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **License & Availability** | **100% Open Source (MIT)** | Open Source (GPL/Apache) | Commercial (Locked) | Freeware (Registration Gate) | Freeware (Registration Gate) |
+| **License & Availability** | **MIT — direct download, no account** | Apache-2.0 — direct download | Free — email registration + Magnet sales follow-up; redistribution restricted | Free — registration gate, Magnet sales follow-up | Free — registration gate |
 | **Flat RAW (`offset == phys`)** | **Yes (Sparse NTFS/ReFS)** | Yes / Raw | RAW / Crash Dump | RAW | RAW |
 | **Error Isolation (`UNREADABLE != ZERO`)** | **Yes (4 KiB + NTSTATUS in Map)** | Partial / Zero-fills | Zero-fills | Zero-fills | Zero-fills |
 | **Live Kernel Hints (CR3 / KPCR / NT Base)** | **Yes (`.map.json`)** | No | No | No | No |
-| **Memory Acquisition Method** | **`MmCopyMemory(PHYSICAL)`** | `\Device\PhysicalMemory` / PTE | Proprietary Driver | Proprietary Driver | Proprietary Driver |
+| **Memory Acquisition Method** | **`MmCopyMemory(PHYSICAL)`** | PTE remapping (default; MmMapIoSpace / PhysicalMemory alternate) | Proprietary Driver | Proprietary Driver | Proprietary Driver |
 | **Non-PnP Control KMDF Driver** | **Yes (Exclusive Access)** | Legacy / Monolithic | Monolithic | Monolithic | Monolithic |
 | **Bandwidth Throttling (`--rate-limit`)** | **Yes** | No | No | No | No |
 | **Stdout Streaming (`-`)** | **Yes** | No | No | No | No |
@@ -201,7 +201,7 @@ cd tools/phylaram-verify && cargo test
 
 ## Origin & Motivation
 
-> *PhylaRAM was created during an active incident response engagement where we needed to acquire memory from a modern Windows host, but found existing tools either outdated or locked behind vendor registration gates and sales funnels. In a live incident, responders need reliable, verifiable tools immediately — without sales friction.*
+During a live IR engagement on a Windows 11 host with VBS/HVCI enabled, I needed a memory image. The legacy tool I tried failed to load its driver, and every free alternative required a work email and a sales-funnel registration before I could download it. In a live incident, waiting on a sales rep to send a link is not an option; volatile evidence is gone by then. PhylaRAM is a direct-download, MIT-licensed tool that never fabricates zero data for pages it could not read.
 
 ---
 
