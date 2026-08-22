@@ -155,6 +155,24 @@ Importing WDK/SDK props inside `driver/phylaram.vcxproj` after `Microsoft.Cpp.De
 ### Fix Applied:
 Placed the WDK and SDK NuGet props imports inside `driver/Directory.Build.props`. MSBuild automatically imports this file before `Microsoft.Cpp.Default.props` for any project in the `driver/` directory, while `cli/phylaram.vcxproj` remains unaffected.
 
+---
+
+## CI Run #32600018314 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (CLI manifest merge)
+
+### Progress:
+- `✓ Build Driver (Release | x64)` **PASSED completely!** `phylaram.sys` generated cleanly.
+- All 762 functions in the CLI compiled and linked cleanly with `bcrypt.lib` and `advapi32.lib`.
+
+### Failed Step: Build CLI (Release | x64)
+- `mt.exe : manifest authoring error c1010001: Values of attribute "level" not equal in different manifest snippets.` (Default MSVC linker UAC fragment `asInvoker` conflicted with `phylaram.manifest` requiring `requireAdministrator`).
+
+### Fix Applied:
+Added `<EnableUAC>false</EnableUAC>` inside `<Link>` in `cli/phylaram.vcxproj` to disable the conflicting default UAC snippet generation, allowing `phylaram.manifest` to define the execution level.
+
+
 
 
 

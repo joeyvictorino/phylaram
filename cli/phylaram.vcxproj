@@ -53,6 +53,7 @@
       <CETCompat>true</CETCompat>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <EnableUAC>false</EnableUAC>
     </Link>
     <Manifest>
       <AdditionalManifestFiles>phylaram.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
