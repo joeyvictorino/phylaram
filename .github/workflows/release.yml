@@ -90,7 +90,7 @@ jobs:
           files: |
             PhylaRAM-${{ steps.version.outputs.VERSION }}-x64-TEST-SIGNED.zip
             PhylaRAM-${{ steps.version.outputs.VERSION }}-x64-TEST-SIGNED.zip.sha256
-          draft: true
+          draft: false
           prerelease: true
           name: PhylaRAM ${{ github.ref_name }} (pre-release)
           body: |
