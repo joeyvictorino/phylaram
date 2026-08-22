@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    WDK and SDK NuGet props for KMDF Driver project.
+    Imported automatically by MSBuild before Microsoft.Cpp.Default.props.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.WDK.x64.10.0.26100.1\build\native\Microsoft.Windows.WDK.x64.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\packages\Microsoft.Windows.SDK.CPP.10.0.26100.1\build\native\Microsoft.Windows.SDK.CPP.props')" />
+</Project>

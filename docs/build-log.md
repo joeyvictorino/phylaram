@@ -140,7 +140,21 @@ Directly imported `Microsoft.Windows.WDK.x64.props` within `driver/phylaram.vcxp
 
 ### Fix Applied:
 1. Restored `Microsoft.Windows.SDK.CPP` and `Microsoft.Windows.SDK.CPP.x64` to `packages.config`.
-2. Imported `Microsoft.Windows.SDK.CPP.props` directly into `driver/phylaram.vcxproj` alongside `Microsoft.Windows.WDK.x64.props`.
+2. Created `driver/Directory.Build.props` to import WDK and SDK props before `Microsoft.Cpp.Default.props` evaluates for the driver project, cleanly scoped to `driver/` without affecting the CLI.
+
+---
+
+## CI Run #32599916725 — PhylaRAM Continuous Integration
+**Trigger:** push to `main`
+**Runner:** `windows-2022`
+**Result:** ❌ FAILURE (driver compilation)
+
+### Root Cause:
+Importing WDK/SDK props inside `driver/phylaram.vcxproj` after `Microsoft.Cpp.Default.props` was too late in MSBuild's lifecycle for toolset resolution. WDK props must be imported before `Microsoft.Cpp.Default.props`.
+
+### Fix Applied:
+Placed the WDK and SDK NuGet props imports inside `driver/Directory.Build.props`. MSBuild automatically imports this file before `Microsoft.Cpp.Default.props` for any project in the `driver/` directory, while `cli/phylaram.vcxproj` remains unaffected.
+
 
 
 
