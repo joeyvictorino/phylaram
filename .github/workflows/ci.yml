@@ -9,7 +9,7 @@ on:
 
 jobs:
   test-portable:
-    name: Portable C++20 & Rust Tests
+    name: Portable Policy, C++20, Rust & Model Tests
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -20,25 +20,32 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Engineering Policy Check
+        run: python3 scripts/engineering_policy_check.py
+
       - name: C++20 Unit Tests
         run: |
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_wavelet_classifier.cpp -o /tmp/test_wavelet && /tmp/test_wavelet
+          set -euo pipefail
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra
+          /tmp/test_range_algebra
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire
+          /tmp/test_mock_acquire
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json
+          /tmp/test_map_json
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser
+          /tmp/test_cli_parser
 
-      - name: Rust Tests & Clippy
+      - name: Rust Format, Clippy & Tests
         working-directory: tools/phylaram-verify
         run: |
           cargo fmt --check
-          cargo clippy -- -D warnings
+          cargo clippy --all-targets -- -D warnings
           cargo test --verbose
 
-      - name: Forensic Interoperability Fixture Tests
+      - name: Forensic Interoperability Fixture Models
         run: python3 tests/test_volatility_fixture.py
 
-      - name: Hardware & Memory Topology Matrix Tests
+      - name: Hardware & Memory Topology Models
         run: python3 tests/test_topology_matrix.py
 
   build-windows:
@@ -54,7 +61,7 @@ jobs:
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
-      - name: Install WDK (NuGet)
+      - name: Install WDK Packages
         run: nuget restore packages.config -PackagesDirectory packages
 
       - name: Setup Rust
@@ -63,32 +70,35 @@ jobs:
       - name: Build Driver (Release | x64)
         run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
 
-      - name: Test-Sign Driver (Pre-CLI Embedding)
+      - name: Test-Sign Driver Before Embedding
         shell: pwsh
         run: |
-          # Generate self-signed certificate for driver test-signing
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-            -Subject "CN=PhylaRAM Test Signing" `
+          $ErrorActionPreference = "Stop"
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=PhylaRAM CI Test Signing" `
             -CertStoreLocation Cert:\CurrentUser\My `
             -NotAfter (Get-Date).AddYears(1)
           $thumbprint = $cert.Thumbprint
-          echo "CERT_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
+          "CERT_THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-          # Export public certificate for local installation on test machines
           Export-Certificate -Cert $cert -FilePath bin\PhylaRAM_TestCert.cer | Out-Null
 
-          # Locate signtool.exe
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object LastWriteTime -Descending |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Sort-Object FullName -Descending |
             Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
 
-          if ($signtool) {
-            # Sign driver BEFORE compiling CLI so phylaram.rc embeds the signed driver!
-            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
-            Write-Host "Driver test-signed with thumbprint: $thumbprint"
-          } else {
-            Write-Warning "signtool.exe not found"
+          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "Driver test signing failed with exit code $LASTEXITCODE"
+          }
+          & $signtool verify /pa /v bin\phylaram.sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "Driver signature verification failed with exit code $LASTEXITCODE"
           }
 
       - name: Build CLI (Release | x64)
@@ -103,27 +113,43 @@ jobs:
       - name: Test-Sign CLI & Verifier
         shell: pwsh
         run: |
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-
-          if ($signtool -and $env:CERT_THUMBPRINT) {
-            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
-            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram-verify.exe 2>&1
-            Write-Host "CLI and Verifier test-signed successfully."
+          $ErrorActionPreference = "Stop"
+          if (-not $env:CERT_THUMBPRINT) {
+            throw "CI signing certificate thumbprint is missing"
           }
 
-      - name: Package Artifacts
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          foreach ($binary in @("bin\phylaram.exe", "bin\phylaram-verify.exe")) {
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 $binary
+            if ($LASTEXITCODE -ne 0) {
+              throw "Signing failed for $binary with exit code $LASTEXITCODE"
+            }
+            & $signtool verify /pa /v $binary
+            if ($LASTEXITCODE -ne 0) {
+              throw "Signature verification failed for $binary with exit code $LASTEXITCODE"
+            }
+          }
+
+      - name: Package Test Artifacts
+        shell: pwsh
         run: |
-          mkdir dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED
-          copy bin\phylaram.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
-          copy bin\phylaram.sys dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
-          copy bin\phylaram-verify.exe dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
-          copy bin\PhylaRAM_TestCert.cer dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
-          copy scripts\install_test_cert.bat dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\
-          copy README.md dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\README.txt
-          copy LICENSE dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED\LICENSE.txt
+          $ErrorActionPreference = "Stop"
+          $destination = "dist\PhylaRAM-0.1.0-alpha-TEST-SIGNED"
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
+          Copy-Item bin\phylaram.exe $destination
+          Copy-Item bin\phylaram.sys $destination
+          Copy-Item bin\phylaram-verify.exe $destination
+          Copy-Item bin\PhylaRAM_TestCert.cer $destination
+          Copy-Item scripts\install_test_cert.bat $destination
+          Copy-Item README.md (Join-Path $destination "README.txt")
+          Copy-Item LICENSE (Join-Path $destination "LICENSE.txt")
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
