@@ -22,6 +22,7 @@
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "msimg32.lib")
 #pragma comment(lib, "user32.lib")
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE

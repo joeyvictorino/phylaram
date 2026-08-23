@@ -51,7 +51,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>bcrypt.lib;advapi32.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>bcrypt.lib;advapi32.lib;user32.lib;gdi32.lib;msimg32.lib;shell32.lib;comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <CETCompat>true</CETCompat>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
