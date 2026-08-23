@@ -420,8 +420,8 @@ bool MainWindow::Create()
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(window_, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
     DwmSetWindowAttribute(window_, 19, &darkMode, sizeof(darkMode)); // Win10 build 17763 fallback
-    DWM_WINDOW_CORNER_PREFERENCE corners = DWMWCP_ROUND;
-    DwmSetWindowAttribute(window_, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
+    DWORD cornerPref = 2; // DWMWCP_ROUND
+    DwmSetWindowAttribute(window_, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPref, sizeof(cornerPref));
 
     CreateFonts();
     CreateControls();
@@ -764,15 +764,16 @@ void MainWindow::ShowCaptureResult(const WorkerResult& result)
     const EvidenceCaptureResult& capture = result.capture;
 
     if (capture.status == EvidenceCaptureStatus::Complete) {
+        const std::wstring outputPath = ReadWindowText(destination_);
         std::wostringstream message;
         message << L"Physical memory evidence bundle finalized successfully!\n\n"
                 << L"Acquired RAM: " << FormatBytes(capture.summary.acquiredBytes) << L"\n"
-                << L"Logical RAW Size: " << FormatBytes(capture.summary.highestPhysicalEnd) << L"\n"
+                << L"Logical RAW Size: " << FormatBytes(capture.summary.logicalSize) << L"\n"
                 << L"Cryptographic SHA-256:\n" << ToWide(capture.summary.sha256) << L"\n\n"
                 << L"Artifacts written:\n"
-                << L"• " << capture.summary.rawPath << L"\n"
-                << L"• " << capture.summary.mapPath << L"\n"
-                << L"• " << capture.summary.sha256Path << L"\n\n"
+                << L"• " << outputPath << L"\n"
+                << L"• " << outputPath << L".map.json\n"
+                << L"• " << outputPath << L".sha256\n\n"
                 << L"Run 'phylaram-verify' for independent offline verification.";
 
         if (result.cleanupError != ERROR_SUCCESS) {
