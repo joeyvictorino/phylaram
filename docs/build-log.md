@@ -195,11 +195,37 @@ Added `<EnableUAC>false</EnableUAC>` inside `<Link>` in `cli/phylaram.vcxproj` t
    - `✓ Package Artifacts` (Bundled `dist/PhylaRAM-0.1.0-alpha-TEST-SIGNED/` containing `phylaram.exe`, `phylaram.sys`, `phylaram-verify.exe`, `README.txt`, `LICENSE.txt`)
    - `✓ Upload Build Artifacts` (Published `PhylaRAM-0.1.0-alpha-TEST-SIGNED` artifact)
 
+---
 
+## CI & Release Runs #32603131911 & #32603136910 — Driver Signing Order & SCM Fix
+**Trigger:** push & tag `v0.1.0-alpha`
+**Runner:** `windows-2022` & `macos-latest`
+**Result:** ✅ **SUCCESS (100% Green)**
 
+### Fixes Verified:
+1. **Driver Pre-Signing Before CLI Embedding:** Reordered CI steps so `bin\phylaram.sys` is Authenticode test-signed before `cli\phylaram.vcxproj` compiles, ensuring `phylaram.rc` embeds the signed driver.
+2. **Unquoted Service Path for KMDF Driver:** Removed quotes from `CreateServiceW` binary path parameter to comply with `SERVICE_KERNEL_DRIVER` MSDN specifications.
+3. **One-Click Test Certificate Installer:** Added `scripts/install_test_cert.bat` and exported `PhylaRAM_TestCert.cer` into release packages for frictionless local VM testing.
 
+---
 
+## Release Run #32605033543 — Sidecar Isolation & Stream Padding
+**Trigger:** tag `v0.1.0-alpha` update
+**Runner:** `windows-2022`
+**Result:** ✅ **SUCCESS (100% Green)**
 
+### Improvements Verified:
+1. **Sidecar Protected Copy:** `ExtractEmbeddedDriver` now copies adjacent `phylaram.sys` sidecars into `%ProgramData%\PhylaRAM\Temp` with `D:P(A;;GA;;;SY)(A;;GA;;;BA)` DACL before loading, protecting user-space sidecars from cleanup deletion.
+2. **Stdout Stream Trailing Zero Padding:** Ensured piped stdout streams (`phylaram.exe - > out.raw`) are properly zero-padded up to `HighestPhysicalEnd`.
 
+---
 
+## CI & CodeQL Runs #32611639659, #32611639664, & #32611645021 — CodeQL Security & Automation
+**Trigger:** push to `main` & tag `v0.1.0-alpha`
+**Runner:** `windows-2022` & `macos-latest`
+**Result:** ✅ **SUCCESS (100% Green across all 3 pipelines)**
 
+### Enhancements Verified:
+1. **Continuous CodeQL Security Scanning:** `.github/workflows/codeql.yml` passed in 5m 2s with **0 security alerts** across kernel driver and Win32 CLI.
+2. **DFIR Automation Options:** Added `--dry-run` and `--json` for instant topology inspection and SOAR/SOC playbook integration.
+3. **Volatility 3 Accelerated Bridge:** Added `tools/phylaram_vol3.py` and automated synthetic memory fixture validation (`tests/test_volatility_fixture.py`).
