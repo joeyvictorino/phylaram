@@ -1,166 +1,226 @@
 #include "phylaram.hpp"
 #include "resource.h"
+
+#include <aclapi.h>
+#include <array>
+#include <iomanip>
 #include <sddl.h>
 #include <sstream>
-#include <iomanip>
-#include <array>
 
-static bool CreateSecureDirectory(const std::wstring& dirPath)
+namespace {
+
+constexpr wchar_t kProtectedAdminDacl[] = L"D:P(A;;GA;;;SY)(A;;GA;;;BA)";
+
+bool ApplyProtectedAdminDacl(const std::wstring& path)
 {
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof(sa);
-    sa.bInheritHandle = FALSE;
-
-    // Grant GENERIC_ALL exclusively to SYSTEM (SY) and BUILTIN\Administrators (BA) with protected DACL (D:P)
-    const wchar_t* sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;BA)";
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            sddl, SDDL_REVISION_1, &sa.lpSecurityDescriptor, nullptr)) {
+            kProtectedAdminDacl,
+            SDDL_REVISION_1,
+            &descriptor,
+            nullptr)) {
         return false;
     }
 
-    BOOL created = CreateDirectoryW(dirPath.c_str(), &sa);
-    DWORD err = GetLastError();
-    LocalFree(sa.lpSecurityDescriptor);
+    BOOL daclPresent = FALSE;
+    BOOL daclDefaulted = FALSE;
+    PACL dacl = nullptr;
+    const BOOL gotDacl = GetSecurityDescriptorDacl(
+        descriptor,
+        &daclPresent,
+        &dacl,
+        &daclDefaulted);
 
-    return created || (err == ERROR_ALREADY_EXISTS);
-}
-
-static std::wstring GenerateUnpredictableDriverPath()
-{
-    wchar_t programData[MAX_PATH + 1]{};
-    DWORD n = GetEnvironmentVariableW(L"ProgramData", programData, MAX_PATH);
-    std::wstring baseDir;
-
-    if (n > 0 && n <= MAX_PATH) {
-        baseDir = std::wstring(programData) + L"\\PhylaRAM";
-    } else {
-        wchar_t systemRoot[MAX_PATH + 1]{};
-        DWORD srN = GetEnvironmentVariableW(L"SystemRoot", systemRoot, MAX_PATH);
-        if (srN > 0 && srN <= MAX_PATH) {
-            baseDir = std::wstring(systemRoot) + L"\\Temp\\PhylaRAM";
-        } else {
-            return {};
-        }
+    DWORD result = ERROR_INVALID_SECURITY_DESCR;
+    if (gotDacl && daclPresent && dacl != nullptr) {
+        result = SetNamedSecurityInfoW(
+            const_cast<LPWSTR>(path.c_str()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            nullptr,
+            nullptr,
+            dacl,
+            nullptr);
     }
 
-    CreateSecureDirectory(baseDir);
-    std::wstring tempDir = baseDir + L"\\Temp";
-    if (!CreateSecureDirectory(tempDir)) {
+    LocalFree(descriptor);
+    return result == ERROR_SUCCESS;
+}
+
+bool CreateSecureDirectory(const std::wstring& directoryPath)
+{
+    SECURITY_ATTRIBUTES attributes{};
+    attributes.nLength = sizeof(attributes);
+    attributes.bInheritHandle = FALSE;
+
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            kProtectedAdminDacl,
+            SDDL_REVISION_1,
+            &attributes.lpSecurityDescriptor,
+            nullptr)) {
+        return false;
+    }
+
+    const BOOL created = CreateDirectoryW(directoryPath.c_str(), &attributes);
+    const DWORD createError = GetLastError();
+    LocalFree(attributes.lpSecurityDescriptor);
+
+    if (!created && createError != ERROR_ALREADY_EXISTS) {
+        return false;
+    }
+
+    const DWORD fileAttributes = GetFileAttributesW(directoryPath.c_str());
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES ||
+        (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+        return false;
+    }
+
+    /*
+     * SECURITY: The extraction directory is a privileged trust boundary.  An
+     * existing directory is not trusted merely because its name matches ours;
+     * reapply the protected SYSTEM/Administrators DACL on every use.
+     */
+    return ApplyProtectedAdminDacl(directoryPath);
+}
+
+std::wstring ResolveExtractionDirectory()
+{
+    wchar_t programData[MAX_PATH + 1]{};
+    const DWORD programDataLength =
+        GetEnvironmentVariableW(L"ProgramData", programData, MAX_PATH);
+
+    std::wstring baseDirectory;
+    if (programDataLength > 0 && programDataLength <= MAX_PATH) {
+        baseDirectory = std::wstring(programData) + L"\\PhylaRAM";
+    } else {
+        wchar_t systemRoot[MAX_PATH + 1]{};
+        const DWORD systemRootLength =
+            GetEnvironmentVariableW(L"SystemRoot", systemRoot, MAX_PATH);
+        if (systemRootLength == 0 || systemRootLength > MAX_PATH) {
+            return {};
+        }
+        baseDirectory = std::wstring(systemRoot) + L"\\Temp\\PhylaRAM";
+    }
+
+    if (!CreateSecureDirectory(baseDirectory)) {
         return {};
     }
 
-    std::array<uint8_t, 16> randomBytes{};
-    BCryptGenRandom(nullptr, randomBytes.data(), static_cast<ULONG>(randomBytes.size()),
-                    BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-
-    std::wostringstream ss;
-    ss << tempDir << L"\\phylaram_drv_";
-    for (uint8_t b : randomBytes) {
-        ss << std::hex << std::setw(2) << std::setfill(L'0') << static_cast<unsigned int>(b);
+    std::wstring tempDirectory = baseDirectory + L"\\Temp";
+    if (!CreateSecureDirectory(tempDirectory)) {
+        return {};
     }
-    ss << L".sys";
 
-    return ss.str();
+    return tempDirectory;
 }
+
+std::wstring GenerateUnpredictableDriverPath()
+{
+    const std::wstring directory = ResolveExtractionDirectory();
+    if (directory.empty()) {
+        return {};
+    }
+
+    std::array<unsigned char, 16> randomBytes{};
+    const NTSTATUS randomStatus = BCryptGenRandom(
+        nullptr,
+        randomBytes.data(),
+        static_cast<ULONG>(randomBytes.size()),
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (randomStatus < 0) {
+        return {};
+    }
+
+    std::wostringstream path;
+    path << directory << L"\\phylaram_drv_";
+    for (const unsigned char byte : randomBytes) {
+        path << std::hex << std::setw(2) << std::setfill(L'0')
+             << static_cast<unsigned int>(byte);
+    }
+    path << L".sys";
+    return path.str();
+}
+
+} // namespace
 
 bool ExtractEmbeddedDriver(std::wstring& driverPathOut)
 {
     driverPathOut.clear();
 
-    // 1. Check if an adjacent phylaram.sys sidecar file exists next to the executable
-    wchar_t exePath[MAX_PATH + 1]{};
-    DWORD modLen = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
-    std::wstring sidecarPath;
-    if (modLen > 0 && modLen <= MAX_PATH) {
-        std::wstring exeStr(exePath);
-        size_t lastSlash = exeStr.find_last_of(L"\\/");
-        if (lastSlash != std::wstring::npos) {
-            std::wstring sidecar = exeStr.substr(0, lastSlash + 1) + L"phylaram.sys";
-            DWORD attr = GetFileAttributesW(sidecar.c_str());
-            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
-                sidecarPath = sidecar;
-            }
-        }
-    }
-
-    std::wstring path = GenerateUnpredictableDriverPath();
-    if (path.empty()) {
+    /*
+     * SECURITY: Production acquisition has exactly one implicit kernel-code
+     * source: the driver embedded into this executable at build time.  An
+     * adjacent phylaram.sys is intentionally ignored so replacing a sidecar
+     * cannot substitute kernel code under an elevated process.
+     */
+    const HRSRC resource =
+        FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_PHYLA_DRIVER), RT_RCDATA);
+    if (resource == nullptr) {
         return false;
     }
 
-    SECURITY_ATTRIBUTES sa{};
-    sa.nLength = sizeof(sa);
-    sa.bInheritHandle = FALSE;
-    const wchar_t* sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;BA)";
+    const HGLOBAL loadedResource = LoadResource(nullptr, resource);
+    if (loadedResource == nullptr) {
+        return false;
+    }
+
+    const DWORD resourceSize = SizeofResource(nullptr, resource);
+    const void* const resourceBytes = LockResource(loadedResource);
+    if (resourceBytes == nullptr || resourceSize == 0) {
+        return false;
+    }
+
+    const std::wstring driverPath = GenerateUnpredictableDriverPath();
+    if (driverPath.empty()) {
+        return false;
+    }
+
+    SECURITY_ATTRIBUTES attributes{};
+    attributes.nLength = sizeof(attributes);
+    attributes.bInheritHandle = FALSE;
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            sddl, SDDL_REVISION_1, &sa.lpSecurityDescriptor, nullptr)) {
+            kProtectedAdminDacl,
+            SDDL_REVISION_1,
+            &attributes.lpSecurityDescriptor,
+            nullptr)) {
         return false;
     }
 
-    // If an adjacent sidecar exists, copy it securely to the protected temporary directory
-    if (!sidecarPath.empty()) {
-        BOOL copyOk = CopyFileW(sidecarPath.c_str(), path.c_str(), FALSE);
-        if (copyOk) {
-            SetFileSecurityW(path.c_str(), DACL_SECURITY_INFORMATION, sa.lpSecurityDescriptor);
-            LocalFree(sa.lpSecurityDescriptor);
-            driverPathOut = path;
-            return true;
-        }
-    }
-
-    // 2. Otherwise extract from embedded IDR_PHYLA_DRIVER resource
-    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_PHYLA_DRIVER), RT_RCDATA);
-    if (!res) {
-        LocalFree(sa.lpSecurityDescriptor);
-        return false;
-    }
-
-    HGLOBAL loaded = LoadResource(nullptr, res);
-    if (!loaded) {
-        LocalFree(sa.lpSecurityDescriptor);
-        return false;
-    }
-
-    DWORD size = SizeofResource(nullptr, res);
-    const void* bytes = LockResource(loaded);
-    if (!bytes || size == 0) {
-        LocalFree(sa.lpSecurityDescriptor);
-        return false;
-    }
-
-    ScopedHandle file(CreateFileW(path.c_str(), GENERIC_WRITE, 0, &sa,
-                                  CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
-    LocalFree(sa.lpSecurityDescriptor);
+    ScopedHandle file(CreateFileW(
+        driverPath.c_str(),
+        GENERIC_WRITE,
+        0,
+        &attributes,
+        CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr));
+    LocalFree(attributes.lpSecurityDescriptor);
 
     if (!file) {
         return false;
     }
 
-    const uint8_t* p = static_cast<const uint8_t*>(bytes);
-    DWORD remaining = size;
-    bool writeOk = true;
-
+    const auto* cursor = static_cast<const unsigned char*>(resourceBytes);
+    DWORD remaining = resourceSize;
     while (remaining != 0) {
         DWORD written = 0;
-        if (!WriteFile(file.Get(), p, remaining, &written, nullptr) || written == 0) {
-            writeOk = false;
-            break;
+        if (!WriteFile(file.Get(), cursor, remaining, &written, nullptr) ||
+            written == 0) {
+            file.Reset();
+            DeleteFileW(driverPath.c_str());
+            return false;
         }
-        p += written;
+        cursor += written;
         remaining -= written;
     }
 
-    if (writeOk) {
-        writeOk = FlushFileBuffers(file.Get()) != FALSE;
-    }
-
-    file.Reset();
-
-    if (!writeOk) {
-        DeleteFileW(path.c_str());
+    if (!FlushFileBuffers(file.Get())) {
+        file.Reset();
+        DeleteFileW(driverPath.c_str());
         return false;
     }
 
-    driverPathOut = path;
+    file.Reset();
+    driverPathOut = driverPath;
     return true;
 }
