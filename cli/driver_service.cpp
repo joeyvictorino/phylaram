@@ -1,117 +1,218 @@
 #include "phylaram.hpp"
-#include <sstream>
+
 #include <chrono>
+#include <sstream>
 #include <thread>
 
-static std::wstring FormatDriverStartError(DWORD err)
+namespace {
+
+constexpr DWORD kServiceTransitionTimeoutMs = 5000;
+constexpr auto kServicePollInterval = std::chrono::milliseconds(50);
+constexpr int kDeleteFileAttempts = 50;
+constexpr auto kDeleteFileRetryInterval = std::chrono::milliseconds(100);
+
+std::wstring FormatDriverStartError(DWORD error)
 {
-    std::wostringstream ss;
-    ss << L"Error " << err << L" (0x" << std::hex << err << std::dec << L"): ";
-    switch (err) {
-    case 577: // ERROR_INVALID_IMAGE_HASH
-        ss << L"ERROR_INVALID_IMAGE_HASH\n"
-           << L"  -> Windows kernel signature check rejected the driver.\n"
-           << L"  -> Resolution for Pre-Release:\n"
-           << L"     1. Ensure Secure Boot is DISABLED in UEFI/BIOS/VM settings.\n"
-           << L"     2. Run 'install_test_cert.bat' as Administrator.\n"
-           << L"     3. Run 'bcdedit /set testsigning on' as Administrator and reboot.";
+    std::wostringstream message;
+    message << L"Error " << error << L" (0x" << std::hex << error
+            << std::dec << L"): ";
+
+    switch (error) {
+    case ERROR_INVALID_IMAGE_HASH:
+        message << L"Windows rejected the kernel-driver signature. "
+                << L"The alpha build is test-signed and belongs only in a dedicated test environment configured for test signing. "
+                << L"Do not weaken Secure Boot or code-integrity policy on an evidence system.";
         break;
-    case 1275: // ERROR_DRIVER_BLOCKED
-        ss << L"ERROR_DRIVER_BLOCKED\n"
-           << L"  -> Driver blocked by Windows Memory Integrity (HVCI) or Microsoft Vulnerable Driver Blocklist.\n"
-           << L"  -> Temporarily disable Memory Integrity in Windows Security > Core Isolation for testing.";
+    case ERROR_DRIVER_BLOCKED:
+        message << L"Windows blocked the driver under the active code-integrity policy. "
+                << L"Use a production Microsoft-signed driver when testing with HVCI/Memory Integrity enabled.";
         break;
-    case 5: // ERROR_ACCESS_DENIED
-        ss << L"ERROR_ACCESS_DENIED\n"
-           << L"  -> Administrator privileges required or an active security agent blocked driver loading.";
+    case ERROR_ACCESS_DENIED:
+        message << L"Administrator privileges are required, or endpoint policy denied driver loading.";
         break;
-    case 2: // ERROR_FILE_NOT_FOUND
-    case 3: // ERROR_PATH_NOT_FOUND
-        ss << L"ERROR_FILE_NOT_FOUND\n"
-           << L"  -> The driver binary path could not be found or opened by the Service Control Manager.";
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+        message << L"The Service Control Manager could not open the extracted driver path.";
         break;
     default: {
-        wchar_t* msgBuf = nullptr;
-        DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-        DWORD len = FormatMessageW(flags, nullptr, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                                   reinterpret_cast<LPWSTR>(&msgBuf), 0, nullptr);
-        if (len > 0 && msgBuf != nullptr) {
-            ss << msgBuf;
-            LocalFree(msgBuf);
+        wchar_t* systemMessage = nullptr;
+        const DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                            FORMAT_MESSAGE_FROM_SYSTEM |
+                            FORMAT_MESSAGE_IGNORE_INSERTS;
+        const DWORD length = FormatMessageW(
+            flags,
+            nullptr,
+            error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            reinterpret_cast<LPWSTR>(&systemMessage),
+            0,
+            nullptr);
+        if (length != 0 && systemMessage != nullptr) {
+            message << systemMessage;
+            LocalFree(systemMessage);
         } else {
-            ss << L"Service Control Manager error.";
+            message << L"Service Control Manager error.";
         }
         break;
     }
     }
-    return ss.str();
+
+    return message.str();
 }
 
-static bool WaitForServiceState(SC_HANDLE service, DWORD desiredState, DWORD timeoutMs)
+bool WaitForServiceState(SC_HANDLE service,
+                         DWORD desiredState,
+                         DWORD timeoutMilliseconds)
 {
-    auto start = std::chrono::steady_clock::now();
-    SERVICE_STATUS_PROCESS ssp{};
-    DWORD needed = 0;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(timeoutMilliseconds);
 
-    while (true) {
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start).count();
-        if (elapsed >= timeoutMs) {
-            break;
-        }
-
-        if (!QueryServiceStatusEx(service, SC_STATUS_PROCESS_INFO,
-                                  reinterpret_cast<LPBYTE>(&ssp), sizeof(ssp), &needed)) {
+    while (std::chrono::steady_clock::now() < deadline) {
+        SERVICE_STATUS_PROCESS status{};
+        DWORD requiredBytes = 0;
+        if (!QueryServiceStatusEx(
+                service,
+                SC_STATUS_PROCESS_INFO,
+                reinterpret_cast<LPBYTE>(&status),
+                sizeof(status),
+                &requiredBytes)) {
             return false;
         }
 
-        if (ssp.dwCurrentState == desiredState) {
+        if (status.dwCurrentState == desiredState) {
             return true;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(kServicePollInterval);
     }
 
     return false;
 }
 
-static void RemoveExistingService(SC_HANDLE scm)
+bool StopServiceIfRunning(SC_HANDLE service)
 {
-    ScopedServiceHandle service(OpenServiceW(scm, PHYLA_SERVICE_NAME,
-                                            SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS));
-    if (!service) {
-        return;
-    }
-
-    SERVICE_STATUS status{};
-    ControlService(service.Get(), SERVICE_CONTROL_STOP, &status);
-    WaitForServiceState(service.Get(), SERVICE_STOPPED, 5000);
-    DeleteService(service.Get());
-    service.Reset();
-
-    for (int i = 0; i < 50; ++i) {
-        ScopedServiceHandle probe(OpenServiceW(scm, PHYLA_SERVICE_NAME, SERVICE_QUERY_STATUS));
-        if (!probe && GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST) {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
-bool InstallAndStartDriver(const std::wstring& sysPath, std::wstring& errorText)
-{
-    errorText.clear();
-
-    ScopedServiceHandle scm(OpenSCManagerW(nullptr, nullptr,
-                                          SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE));
-    if (!scm) {
-        errorText = L"OpenSCManagerW failed (Error: " + std::to_wstring(GetLastError()) + L")";
+    SERVICE_STATUS_PROCESS status{};
+    DWORD requiredBytes = 0;
+    if (!QueryServiceStatusEx(
+            service,
+            SC_STATUS_PROCESS_INFO,
+            reinterpret_cast<LPBYTE>(&status),
+            sizeof(status),
+            &requiredBytes)) {
         return false;
     }
 
-    RemoveExistingService(scm.Get());
+    if (status.dwCurrentState == SERVICE_STOPPED) {
+        return true;
+    }
 
-    // NOTE: For SERVICE_KERNEL_DRIVER, MSDN specifies lpBinaryPathName must NOT be enclosed in quotes.
+    SERVICE_STATUS ignored{};
+    if (!ControlService(service, SERVICE_CONTROL_STOP, &ignored)) {
+        const DWORD error = GetLastError();
+        if (error != ERROR_SERVICE_NOT_ACTIVE) {
+            return false;
+        }
+    }
+
+    return WaitForServiceState(
+        service,
+        SERVICE_STOPPED,
+        kServiceTransitionTimeoutMs);
+}
+
+bool WaitUntilServiceIsDeleted(SC_HANDLE scm)
+{
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        ScopedServiceHandle probe(OpenServiceW(
+            scm,
+            PHYLA_SERVICE_NAME,
+            SERVICE_QUERY_STATUS));
+        if (!probe) {
+            return GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST;
+        }
+        std::this_thread::sleep_for(kDeleteFileRetryInterval);
+    }
+    return false;
+}
+
+bool RemoveExistingService(SC_HANDLE scm)
+{
+    ScopedServiceHandle service(OpenServiceW(
+        scm,
+        PHYLA_SERVICE_NAME,
+        SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS));
+    if (!service) {
+        return GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST;
+    }
+
+    if (!StopServiceIfRunning(service.Get())) {
+        return false;
+    }
+    if (!DeleteService(service.Get())) {
+        const DWORD error = GetLastError();
+        if (error != ERROR_SERVICE_MARKED_FOR_DELETE) {
+            return false;
+        }
+    }
+
+    service.Reset();
+    return WaitUntilServiceIsDeleted(scm);
+}
+
+void BestEffortDeleteService(SC_HANDLE service) noexcept
+{
+    StopServiceIfRunning(service);
+    DeleteService(service);
+}
+
+DWORD DeleteExtractedDriver(const std::wstring& path) noexcept
+{
+    if (path.empty()) {
+        return ERROR_SUCCESS;
+    }
+
+    for (int attempt = 0; attempt < kDeleteFileAttempts; ++attempt) {
+        if (DeleteFileW(path.c_str())) {
+            return ERROR_SUCCESS;
+        }
+
+        const DWORD error = GetLastError();
+        if (error == ERROR_FILE_NOT_FOUND) {
+            return ERROR_SUCCESS;
+        }
+        if (error != ERROR_SHARING_VIOLATION &&
+            error != ERROR_ACCESS_DENIED) {
+            return error;
+        }
+
+        std::this_thread::sleep_for(kDeleteFileRetryInterval);
+    }
+
+    return GetLastError();
+}
+
+} // namespace
+
+bool InstallAndStartDriver(const std::wstring& sysPath,
+                           std::wstring& errorText)
+{
+    errorText.clear();
+
+    ScopedServiceHandle scm(OpenSCManagerW(
+        nullptr,
+        nullptr,
+        SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE));
+    if (!scm) {
+        const DWORD error = GetLastError();
+        errorText = L"OpenSCManagerW failed: " + FormatDriverStartError(error);
+        return false;
+    }
+
+    if (!RemoveExistingService(scm.Get())) {
+        errorText = L"A previous PhylaRAM service instance could not be stopped and deleted safely.";
+        return false;
+    }
+
     ScopedServiceHandle service(CreateServiceW(
         scm.Get(),
         PHYLA_SERVICE_NAME,
@@ -121,43 +222,111 @@ bool InstallAndStartDriver(const std::wstring& sysPath, std::wstring& errorText)
         SERVICE_DEMAND_START,
         SERVICE_ERROR_NORMAL,
         sysPath.c_str(),
-        nullptr, nullptr, nullptr, nullptr, nullptr));
-
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr));
     if (!service) {
-        DWORD err = GetLastError();
-        errorText = L"CreateServiceW failed: " + FormatDriverStartError(err);
+        const DWORD error = GetLastError();
+        errorText = L"CreateServiceW failed: " + FormatDriverStartError(error);
         return false;
     }
 
     if (!StartServiceW(service.Get(), 0, nullptr)) {
-        DWORD err = GetLastError();
-        if (err != ERROR_SERVICE_ALREADY_RUNNING) {
-            errorText = L"StartServiceW failed: " + FormatDriverStartError(err);
+        const DWORD error = GetLastError();
+        if (error != ERROR_SERVICE_ALREADY_RUNNING) {
+            BestEffortDeleteService(service.Get());
+            errorText = L"StartServiceW failed: " + FormatDriverStartError(error);
             return false;
         }
     }
 
-    if (!WaitForServiceState(service.Get(), SERVICE_RUNNING, 5000)) {
-        errorText = L"Driver failed to reach SERVICE_RUNNING state";
+    if (!WaitForServiceState(
+            service.Get(),
+            SERVICE_RUNNING,
+            kServiceTransitionTimeoutMs)) {
+        BestEffortDeleteService(service.Get());
+        errorText = L"The driver service did not reach SERVICE_RUNNING before the timeout.";
         return false;
     }
 
     return true;
 }
 
-void StopAndDeleteDriver()
+DWORD StopAndDeleteDriver() noexcept
 {
-    ScopedServiceHandle scm(OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT));
+    ScopedServiceHandle scm(OpenSCManagerW(
+        nullptr,
+        nullptr,
+        SC_MANAGER_CONNECT));
     if (!scm) {
-        return;
+        return GetLastError();
     }
 
-    ScopedServiceHandle service(OpenServiceW(scm.Get(), PHYLA_SERVICE_NAME,
-                                            SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS));
-    if (service) {
-        SERVICE_STATUS status{};
-        ControlService(service.Get(), SERVICE_CONTROL_STOP, &status);
-        WaitForServiceState(service.Get(), SERVICE_STOPPED, 5000);
-        DeleteService(service.Get());
+    ScopedServiceHandle service(OpenServiceW(
+        scm.Get(),
+        PHYLA_SERVICE_NAME,
+        SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS));
+    if (!service) {
+        const DWORD error = GetLastError();
+        return error == ERROR_SERVICE_DOES_NOT_EXIST
+                   ? ERROR_SUCCESS
+                   : error;
     }
+
+    if (!StopServiceIfRunning(service.Get())) {
+        return GetLastError();
+    }
+
+    if (!DeleteService(service.Get())) {
+        const DWORD error = GetLastError();
+        if (error != ERROR_SERVICE_MARKED_FOR_DELETE) {
+            return error;
+        }
+    }
+
+    return ERROR_SUCCESS;
+}
+
+bool DriverRuntime::Start(std::wstring& errorText)
+{
+    errorText.clear();
+    if (serviceStarted_ || !extractedDriverPath_.empty()) {
+        errorText = L"Driver runtime is already active.";
+        return false;
+    }
+
+    std::wstring extractedPath;
+    if (!ExtractEmbeddedDriver(extractedPath)) {
+        errorText = L"Failed to extract the embedded PhylaRAM driver into the protected staging directory.";
+        return false;
+    }
+
+    if (!InstallAndStartDriver(extractedPath, errorText)) {
+        DeleteExtractedDriver(extractedPath);
+        return false;
+    }
+
+    extractedDriverPath_ = std::move(extractedPath);
+    serviceStarted_ = true;
+    return true;
+}
+
+DWORD DriverRuntime::Stop() noexcept
+{
+    DWORD firstError = ERROR_SUCCESS;
+
+    if (serviceStarted_) {
+        firstError = StopAndDeleteDriver();
+        serviceStarted_ = false;
+    }
+
+    const DWORD fileError = DeleteExtractedDriver(extractedDriverPath_);
+    extractedDriverPath_.clear();
+
+    if (firstError != ERROR_SUCCESS) {
+        return firstError;
+    }
+    return fileError;
 }
