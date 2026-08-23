@@ -46,6 +46,7 @@
       <ConformanceMode>true</ConformanceMode>
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <BufferSecurityCheck>true</BufferSecurityCheck>
+      <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -69,13 +70,12 @@
     <ClCompile Include="sha256.cpp" />
     <ClCompile Include="map.cpp" />
     <ClCompile Include="acquire.cpp" />
+    <ClCompile Include="evidence_transaction.cpp" />
     <ClInclude Include="phylaram.hpp" />
     <ClInclude Include="gui.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="..\shared\phylaram.h" />
     <ClInclude Include="..\shared\interfaces.hpp" />
-    <ClInclude Include="..\shared\compliance_map.hpp" />
-    <ClInclude Include="..\shared\wavelet_classifier.hpp" />
     <ResourceCompile Include="phylaram.rc" />
     <Manifest Include="phylaram.manifest" />
   </ItemGroup>
