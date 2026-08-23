@@ -1,5 +1,5 @@
 use crate::hash::calculate_logical_raw_sha256;
-use crate::schema::{MapFile, RangeEntry, UnreadableEntry};
+use crate::schema::{MapFile, UnreadableEntry};
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::{self, File};
@@ -17,27 +17,75 @@ pub enum VerificationError {
     InvalidSchema(String),
     InvalidStatus(String),
     InvalidHashEncoding(String),
-    SizeMismatch { expected: u64, actual: u64 },
-    ZeroLengthRange { index: usize },
-    RangeArithmeticOverflow { index: usize },
-    RangeBeyondLogicalSize { index: usize, end: u64, logical_size: u64 },
-    RangeOverlap { previous_end: u64, next_start: u64 },
-    HighestPhysicalEndMismatch { expected: u64, actual: u64 },
+    SizeMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    ZeroLengthRange {
+        index: usize,
+    },
+    RangeArithmeticOverflow {
+        index: usize,
+    },
+    RangeBeyondLogicalSize {
+        index: usize,
+        end: u64,
+        logical_size: u64,
+    },
+    RangeOverlap {
+        previous_end: u64,
+        next_start: u64,
+    },
+    HighestPhysicalEndMismatch {
+        expected: u64,
+        actual: u64,
+    },
     DuplicateDriverRun(u32),
     DriverRunDomainMismatch,
     PhysicalSumOverflow,
-    PhysicalSumMismatch { expected: u64, actual: u64 },
+    PhysicalSumMismatch {
+        expected: u64,
+        actual: u64,
+    },
     AccountingOverflow,
-    AccountingMismatch { physical: u64, accounted: u64 },
-    InvalidUnreadableSpan { index: usize, start: u64, length: u64 },
-    UnreadableArithmeticOverflow { index: usize },
-    UnreadableOverlap { previous_end: u64, next_start: u64 },
-    UnreadableOutsidePhysicalRun { index: usize, start: u64, end: u64 },
+    AccountingMismatch {
+        physical: u64,
+        accounted: u64,
+    },
+    InvalidUnreadableSpan {
+        index: usize,
+        start: u64,
+        length: u64,
+    },
+    UnreadableArithmeticOverflow {
+        index: usize,
+    },
+    UnreadableOverlap {
+        previous_end: u64,
+        next_start: u64,
+    },
+    UnreadableOutsidePhysicalRun {
+        index: usize,
+        start: u64,
+        end: u64,
+    },
     UnreadableSumOverflow,
-    UnreadableSumMismatch { expected: u64, actual: u64 },
-    UnreadableRepresentationMismatch { start: u64, offset: u64 },
-    HashMismatch { expected: String, actual: String },
-    SidecarMismatch { sidecar: String, computed: String },
+    UnreadableSumMismatch {
+        expected: u64,
+        actual: u64,
+    },
+    UnreadableRepresentationMismatch {
+        start: u64,
+        offset: u64,
+    },
+    HashMismatch {
+        expected: String,
+        actual: String,
+    },
+    SidecarMismatch {
+        sidecar: String,
+        computed: String,
+    },
 }
 
 impl fmt::Display for VerificationError {
@@ -234,7 +282,7 @@ fn validate_ranges(map: &MapFile) -> Result<Vec<ParsedRange>, VerificationError>
     }
 
     let expected_runs: BTreeSet<u32> = (0..map.ranges.len())
-        .map(|index| u32::try_from(index))
+        .map(u32::try_from)
         .collect::<Result<_, _>>()
         .map_err(|_| VerificationError::DriverRunDomainMismatch)?;
     if seen_driver_runs != expected_runs {
@@ -347,10 +395,7 @@ fn validate_status(map: &MapFile) -> Result<(), VerificationError> {
     Ok(())
 }
 
-fn validate_sidecar(
-    sha_path: &Path,
-    computed_hash: &str,
-) -> Result<(), VerificationError> {
+fn validate_sidecar(sha_path: &Path, computed_hash: &str) -> Result<(), VerificationError> {
     let sidecar_content = fs::read_to_string(sha_path)?;
     let sidecar_hash = sidecar_content
         .split_whitespace()
@@ -358,9 +403,7 @@ fn validate_sidecar(
         .unwrap_or("")
         .trim();
 
-    if !is_sha256_hex(sidecar_hash)
-        || !computed_hash.eq_ignore_ascii_case(sidecar_hash)
-    {
+    if !is_sha256_hex(sidecar_hash) || !computed_hash.eq_ignore_ascii_case(sidecar_hash) {
         return Err(VerificationError::SidecarMismatch {
             sidecar: sidecar_hash.to_owned(),
             computed: computed_hash.to_owned(),

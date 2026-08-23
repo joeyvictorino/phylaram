@@ -58,45 +58,7 @@ pub struct KernelHintsMap {
     pub processors: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct WaveletEntropyMap {
-    #[serde(default)]
-    pub identity_density: f32,
-    #[serde(default)]
-    pub transition_energy: f32,
-    #[serde(default)]
-    pub bigram_entropy: f32,
-    #[serde(default)]
-    pub prediction_confidence: f32,
-    #[serde(default)]
-    pub orbit_hash: Option<String>,
-    #[serde(default)]
-    pub category: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ComplianceMappingEntry {
-    #[serde(default)]
-    pub capability: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub mitre_attack: String,
-    #[serde(default)]
-    pub nist_sp_800_53: String,
-    #[serde(default)]
-    pub nist_csf: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ComplianceStandardsMap {
-    #[serde(default)]
-    pub frameworks: Vec<String>,
-    #[serde(default)]
-    pub mappings: Vec<ComplianceMappingEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MapFile {
     pub producer: String,
     pub producer_version: String,
@@ -110,10 +72,6 @@ pub struct MapFile {
     pub sha256: String,
     #[serde(default)]
     pub kernel_hints: Option<KernelHintsMap>,
-    #[serde(default)]
-    pub wavelet_entropy: Option<WaveletEntropyMap>,
-    #[serde(default)]
-    pub compliance_standards: Option<ComplianceStandardsMap>,
     pub ranges: Vec<RangeEntry>,
     pub unreadable: Vec<UnreadableEntry>,
 }

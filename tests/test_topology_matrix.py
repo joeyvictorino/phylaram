@@ -39,7 +39,7 @@ def build_test_scenarios() -> List[TopologyScenario]:
             logical_size=0x400000, # 4 MiB
             runs=[
                 (0x0, 0xA0000),       # 640 KiB Low RAM
-                (0x100000, 0x2E0000), # 2.875 MiB Main RAM
+                (0x100000, 0x300000), # 3.0 MiB Main RAM (ends at 0x400000)
             ],
             injected_errors=[]
         ),
@@ -52,7 +52,7 @@ def build_test_scenarios() -> List[TopologyScenario]:
                 (0x0, 0xA0000),       # 640 KiB Low RAM
                 (0x100000, 0x1F0000), # ~1.9 MiB Lower RAM
                 (0x300000, 0x200000), # 2 MiB Mid RAM (after 1MB gap)
-                (0x600000, 0x1F0000), # ~1.9 MiB High RAM (after 1MB ReBAR hole)
+                (0x600000, 0x200000), # 2.0 MiB High RAM (ends at 0x800000)
             ],
             injected_errors=[]
         ),
@@ -65,7 +65,7 @@ def build_test_scenarios() -> List[TopologyScenario]:
                 (0x0, 0xA0000),        # Node 0 Low RAM
                 (0x100000, 0x3F0000),  # Node 0 Main RAM
                 (0x500000, 0x400000),  # Node 0 High RAM
-                (0xA00000, 0x500000)   # Node 1 High RAM across NUMA interconnect
+                (0xA00000, 0x600000)   # Node 1 High RAM across NUMA interconnect (ends at 0x1000000)
             ],
             injected_errors=[]
         ),
@@ -80,7 +80,7 @@ def build_test_scenarios() -> List[TopologyScenario]:
                 (0x300000, 0x400000),
                 (0x800000, 0x400000),
                 (0xD00000, 0x400000),
-                (0x1300000, 0x800000),
+                (0x1300000, 0xD00000), # ends at 0x2000000
             ],
             injected_errors=[]
         ),
@@ -90,7 +90,7 @@ def build_test_scenarios() -> List[TopologyScenario]:
             name="Hardware ECC Memory Faults & Page Boundary Isolation",
             logical_size=0x400000, # 4 MiB
             runs=[
-                (0x1000, 0x3FE000), # ~3.99 MiB
+                (0x1000, 0x3FF000), # ends at 0x400000
             ],
             injected_errors=[
                 (0x1000 + 4096, 4096, "0xC000009C"),       # Bad ECC page in chunk 1
@@ -117,6 +117,10 @@ def execute_scenario(scenario: TopologyScenario, tmpdir: str, verifier_bin: str)
         for base, length in scenario.runs:
             f.seek(base)
             f.write(b"\xAA" * length)
+
+        for start, length, _ in scenario.injected_errors:
+            f.seek(start)
+            f.write(b"\x00" * length)
 
         f.seek(scenario.logical_size - 1)
         f.write(b"\x00")

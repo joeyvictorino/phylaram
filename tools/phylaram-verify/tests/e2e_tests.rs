@@ -12,7 +12,7 @@ fn test_e2e_valid_bundle_verification() {
     let map_path = dir.path().join("memory.raw.map.json");
     let sha_path = dir.path().join("memory.raw.sha256");
 
-    let mut raw_data = vec![0u8; 1024 * 1024]; // 1 MiB
+    let mut raw_data = vec![0u8; 0x70000]; // 448 KiB
     raw_data[0x1000..0x2000].fill(0xAA);
     raw_data[0x50000..0x70000].fill(0xBB);
 
@@ -30,15 +30,13 @@ fn test_e2e_valid_bundle_verification() {
         producer_version: "0.1.0-alpha".to_string(),
         schema: "phylaram-map-2".to_string(),
         status: "complete".to_string(),
-        logical_size: 1024 * 1024,
+        logical_size: 0x70000,
         physical_bytes: 0x1000 + 0x20000,
         acquired_bytes: 0x1000 + 0x20000,
         unreadable_bytes: 0,
         topology_changed: false,
         sha256: hash_hex.clone(),
         kernel_hints: None,
-        wavelet_entropy: None,
-        compliance_standards: None,
         ranges: vec![
             RangeEntry {
                 driver_run: 0,
@@ -59,7 +57,7 @@ fn test_e2e_valid_bundle_verification() {
 
     let verified = verify_bundle(&raw_path, &map_path, Some(&sha_path)).unwrap();
     assert_eq!(verified.status, "complete");
-    assert_eq!(verified.logical_size, 1024 * 1024);
+    assert_eq!(verified.logical_size, 0x70000);
 }
 
 #[test]
@@ -87,8 +85,6 @@ fn test_e2e_incomplete_unreadable_verification() {
         topology_changed: false,
         sha256: hash_hex,
         kernel_hints: None,
-        wavelet_entropy: None,
-        compliance_standards: None,
         ranges: vec![RangeEntry {
             driver_run: 0,
             start: "0x0".to_string(),
