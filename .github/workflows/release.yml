@@ -51,14 +51,11 @@ jobs:
           $ErrorActionPreference = "Stop"
           $cert = New-SelfSignedCertificate `
             -Type CodeSigningCert `
-            -Subject "CN=PhylaRAM CI Test Signing" `
+            -Subject "CN=PhylaRAM Release Test Signing" `
             -CertStoreLocation Cert:\CurrentUser\My `
             -NotAfter (Get-Date).AddYears(1)
           $thumbprint = $cert.Thumbprint
           "CERT_THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Export-Certificate -Cert $cert -FilePath bin\PhylaRAM_TestCert.cer | Out-Null
-          Import-Certificate -FilePath bin\PhylaRAM_TestCert.cer -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
-          Import-Certificate -FilePath bin\PhylaRAM_TestCert.cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
 
           $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
             Sort-Object FullName -Descending |
@@ -76,7 +73,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Driver test signing failed with exit code $LASTEXITCODE"
           }
-          & $signtool verify /pa /v bin\phylaram.sys
+          & $signtool verify /v bin\phylaram.sys
           if ($LASTEXITCODE -ne 0) {
             throw "Driver signature verification failed with exit code $LASTEXITCODE"
           }
@@ -115,7 +112,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Signing failed for $binary with exit code $LASTEXITCODE"
             }
-            & $signtool verify /pa /v $binary
+            & $signtool verify /v $binary
             if ($LASTEXITCODE -ne 0) {
               throw "Signature verification failed for $binary with exit code $LASTEXITCODE"
             }
