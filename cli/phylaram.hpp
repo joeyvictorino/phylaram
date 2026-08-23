@@ -1,48 +1,56 @@
 #pragma once
 
-#include <windows.h>
+#include <atomic>
 #include <bcrypt.h>
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <atomic>
-#include <memory>
-#include "../shared/phylaram.h"
-#include "../shared/interfaces.hpp"
+#include <windows.h>
 
-// Generic Win32 RAII handle wrapper adhering to the Rule of 5
+#include "../shared/interfaces.hpp"
+#include "../shared/phylaram.h"
+
 template <typename HandleType, typename DeleterType, HandleType InvalidValue = nullptr>
 class UniqueWin32Handle {
 public:
-    explicit UniqueWin32Handle(HandleType h = InvalidValue) noexcept : handle_(h) {}
+    explicit UniqueWin32Handle(HandleType handle = InvalidValue) noexcept
+        : handle_(handle) {}
+
     ~UniqueWin32Handle() noexcept { Reset(); }
 
     UniqueWin32Handle(const UniqueWin32Handle&) = delete;
     UniqueWin32Handle& operator=(const UniqueWin32Handle&) = delete;
 
-    UniqueWin32Handle(UniqueWin32Handle&& other) noexcept : handle_(other.Release()) {}
-    UniqueWin32Handle& operator=(UniqueWin32Handle&& other) noexcept {
+    UniqueWin32Handle(UniqueWin32Handle&& other) noexcept
+        : handle_(other.Release()) {}
+
+    UniqueWin32Handle& operator=(UniqueWin32Handle&& other) noexcept
+    {
         if (this != &other) {
             Reset(other.Release());
         }
         return *this;
     }
 
-    HandleType Get() const noexcept { return handle_; }
-    explicit operator bool() const noexcept { return handle_ != InvalidValue; }
-
-    HandleType Release() noexcept {
-        HandleType h = handle_;
-        handle_ = InvalidValue;
-        return h;
+    [[nodiscard]] HandleType Get() const noexcept { return handle_; }
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return handle_ != InvalidValue;
     }
 
-    void Reset(HandleType h = InvalidValue) noexcept {
+    [[nodiscard]] HandleType Release() noexcept
+    {
+        const HandleType handle = handle_;
+        handle_ = InvalidValue;
+        return handle;
+    }
+
+    void Reset(HandleType replacement = InvalidValue) noexcept
+    {
         if (handle_ != InvalidValue) {
             DeleterType{}(handle_);
-            handle_ = InvalidValue;
         }
-        handle_ = h;
+        handle_ = replacement;
     }
 
 private:
@@ -50,37 +58,43 @@ private:
 };
 
 struct FileHandleDeleter {
-    void operator()(HANDLE h) const noexcept {
-        if (h != INVALID_HANDLE_VALUE && h != nullptr) {
-            CloseHandle(h);
+    void operator()(HANDLE handle) const noexcept
+    {
+        if (handle != INVALID_HANDLE_VALUE && handle != nullptr) {
+            CloseHandle(handle);
         }
     }
 };
 
 struct ServiceHandleDeleter {
-    void operator()(SC_HANDLE h) const noexcept {
-        if (h != nullptr) {
-            CloseServiceHandle(h);
+    void operator()(SC_HANDLE handle) const noexcept
+    {
+        if (handle != nullptr) {
+            CloseServiceHandle(handle);
         }
     }
 };
 
 struct SidDeleter {
-    void operator()(PSID s) const noexcept {
-        if (s != nullptr) {
-            FreeSid(s);
+    void operator()(PSID sid) const noexcept
+    {
+        if (sid != nullptr) {
+            FreeSid(sid);
         }
     }
 };
 
-using ScopedHandle = UniqueWin32Handle<HANDLE, FileHandleDeleter, INVALID_HANDLE_VALUE>;
-using ScopedServiceHandle = UniqueWin32Handle<SC_HANDLE, ServiceHandleDeleter, nullptr>;
+using ScopedHandle =
+    UniqueWin32Handle<HANDLE, FileHandleDeleter, INVALID_HANDLE_VALUE>;
+using ScopedServiceHandle =
+    UniqueWin32Handle<SC_HANDLE, ServiceHandleDeleter, nullptr>;
 using ScopedSid = UniqueWin32Handle<PSID, SidDeleter, nullptr>;
 
-class DeviceSession : public IDeviceSession {
+class DeviceSession final : public IDeviceSession {
 public:
     DeviceSession();
     ~DeviceSession() override;
+
     DeviceSession(const DeviceSession&) = delete;
     DeviceSession& operator=(const DeviceSession&) = delete;
     DeviceSession(DeviceSession&&) noexcept = default;
@@ -88,22 +102,32 @@ public:
 
     bool Open() override;
     void Close() override;
-    bool Query(uint64_t& highestEnd, uint64_t& totalBytes, std::vector<MemoryRun>& runs) override;
+    bool Query(uint64_t& highestEnd,
+               uint64_t& totalBytes,
+               std::vector<MemoryRun>& runs) override;
     bool QueryHints(KernelHints& hints) override;
-    bool Read(uint32_t runIndex, uint64_t offset, uint32_t length, ReadResult& result) override;
+    bool Read(uint32_t runIndex,
+              uint64_t offset,
+              uint32_t length,
+              ReadResult& result) override;
     bool End(bool& topologyChanged) override;
-    uint32_t LastError() const noexcept override { return lastError_; }
+
+    [[nodiscard]] uint32_t LastError() const noexcept override
+    {
+        return lastError_;
+    }
 
 private:
     ScopedHandle handle_;
     DWORD lastError_ = ERROR_SUCCESS;
-    std::vector<uint8_t> ioBuffer_; // Reusable 16 MiB transfer buffer
+    std::vector<uint8_t> ioBuffer_;
 };
 
-class RawWriter : public IRawWriter {
+class RawWriter final : public IRawWriter {
 public:
     RawWriter() = default;
     ~RawWriter() override { Close(); }
+
     RawWriter(const RawWriter&) = delete;
     RawWriter& operator=(const RawWriter&) = delete;
     RawWriter(RawWriter&&) noexcept = default;
@@ -112,26 +136,29 @@ public:
     bool PreflightAndOpen(const std::wstring& partialPath,
                           uint64_t logicalSize,
                           uint64_t expectedPhysicalBytes) override;
-    bool WriteAt(uint64_t offset, const uint8_t* data, size_t length) override;
+    bool WriteAt(uint64_t offset,
+                 const uint8_t* data,
+                 size_t length) override;
     bool FlushAndClose() override;
     void Close() override;
-    bool IsSparse() const noexcept override { return sparse_; }
-    bool IsStdout() const noexcept { return isStdout_; }
-    uint32_t LastError() const noexcept override { return lastError_; }
+
+    [[nodiscard]] bool IsSparse() const noexcept override { return sparse_; }
+    [[nodiscard]] uint32_t LastError() const noexcept override
+    {
+        return lastError_;
+    }
 
 private:
     ScopedHandle file_;
     bool sparse_ = false;
-    bool isStdout_ = false;
-    uint64_t logicalSize_ = 0;
-    uint64_t currentStreamOffset_ = 0;
     DWORD lastError_ = ERROR_SUCCESS;
 };
 
-class Sha256 : public IHasher {
+class Sha256 final : public IHasher {
 public:
     Sha256() = default;
     ~Sha256() override { Reset(); }
+
     Sha256(const Sha256&) = delete;
     Sha256& operator=(const Sha256&) = delete;
     Sha256(Sha256&& other) noexcept;
@@ -144,33 +171,88 @@ public:
     void Reset() override;
 
 private:
-    BCRYPT_ALG_HANDLE alg_ = nullptr;
+    BCRYPT_ALG_HANDLE algorithm_ = nullptr;
     BCRYPT_HASH_HANDLE hash_ = nullptr;
     bool initialized_ = false;
 };
 
-using ProgressCallback = void(*)(uint64_t acquiredBytes, uint64_t totalBytes, double speedMBs, uint32_t etaSeconds, void* userData);
+using ProgressCallback = void (*)(uint64_t acquiredBytes,
+                                  uint64_t totalBytes,
+                                  double speedMBs,
+                                  uint32_t etaSeconds,
+                                  void* userData);
 
 struct AcquisitionConfig {
     bool quiet = false;
-    uint32_t rateLimitMBps = 0; // 0 = unlimited, >0 = throttle speed in MB/s
+    uint32_t rateLimitMBps = 0;
     ProgressCallback onProgress = nullptr;
     void* callbackData = nullptr;
+};
+
+enum class EvidenceCaptureStatus {
+    Complete,
+    Incomplete,
+    Cancelled,
+    Failed,
+};
+
+struct EvidenceCaptureResult {
+    EvidenceCaptureStatus status = EvidenceCaptureStatus::Failed;
+    AcquisitionSummary summary;
+    std::wstring error;
+    DWORD systemError = ERROR_SUCCESS;
+
+    [[nodiscard]] bool HasFinalizedBundle() const noexcept
+    {
+        return status == EvidenceCaptureStatus::Complete ||
+               status == EvidenceCaptureStatus::Incomplete;
+    }
+};
+
+class DriverRuntime final {
+public:
+    DriverRuntime() = default;
+    ~DriverRuntime() { Stop(); }
+
+    DriverRuntime(const DriverRuntime&) = delete;
+    DriverRuntime& operator=(const DriverRuntime&) = delete;
+    DriverRuntime(DriverRuntime&&) = delete;
+    DriverRuntime& operator=(DriverRuntime&&) = delete;
+
+    bool Start(std::wstring& errorText);
+    void Stop() noexcept;
+
+private:
+    std::wstring extractedDriverPath_;
+    bool serviceStarted_ = false;
 };
 
 bool ExtractEmbeddedDriver(std::wstring& driverPathOut);
 bool InstallAndStartDriver(const std::wstring& sysPath, std::wstring& errorText);
 void StopAndDeleteDriver();
+
 bool IsSupportedWindows(std::wstring& reason);
 bool IsAdministrator();
-bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& summary);
-bool WriteSha256Sidecar(const std::wstring& path, const std::wstring& rawFileName, const std::string& sha256);
-bool PromoteStagingFile(const std::wstring& stagingPath, const std::wstring& finalPath);
+
+bool WriteMapJson(const std::wstring& path,
+                  const AcquisitionSummary& summary);
+bool WriteSha256Sidecar(const std::wstring& path,
+                        const std::wstring& rawFileName,
+                        const std::string& sha256);
+bool PromoteStagingFile(const std::wstring& stagingPath,
+                        const std::wstring& finalPath);
+
 bool Acquire(IDeviceSession& device,
              IRawWriter& writer,
-             IHasher* hasher,
+             IHasher& hasher,
              AcquisitionSummary& summary,
              std::atomic_bool& cancelled,
              const AcquisitionConfig& config);
 
-int LaunchGui(HINSTANCE hInstance);
+EvidenceCaptureResult CaptureEvidenceToFile(
+    IDeviceSession& device,
+    const std::wstring& outputPath,
+    std::atomic_bool& cancelled,
+    const AcquisitionConfig& config);
+
+int LaunchGui(HINSTANCE instance);
