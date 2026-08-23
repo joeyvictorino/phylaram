@@ -47,6 +47,7 @@
       <ControlFlowGuard>Guard</ControlFlowGuard>
       <BufferSecurityCheck>true</BufferSecurityCheck>
       <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
