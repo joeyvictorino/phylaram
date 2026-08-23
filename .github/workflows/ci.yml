@@ -34,6 +34,9 @@ jobs:
           cargo clippy -- -D warnings
           cargo test --verbose
 
+      - name: Forensic Interoperability Fixture Tests
+        run: python3 tests/test_volatility_fixture.py
+
   build-windows:
     name: Windows MSVC & KMDF Build
     runs-on: windows-2022
