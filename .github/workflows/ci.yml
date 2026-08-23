@@ -86,10 +86,14 @@ jobs:
           Import-Certificate -FilePath bin\PhylaRAM_TestCert.cer -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
           Import-Certificate -FilePath bin\PhylaRAM_TestCert.cer -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
 
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+          $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
             Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
+            Select-Object -First 1 -ExpandProperty FullName)
+          if (-not $signtool) {
+            $signtool = (Get-ChildItem -Path "C:\Program Files\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName)
+          }
           if (-not $signtool) {
             throw "signtool.exe not found"
           }
@@ -120,10 +124,14 @@ jobs:
             throw "CI signing certificate thumbprint is missing"
           }
 
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+          $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
             Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
+            Select-Object -First 1 -ExpandProperty FullName)
+          if (-not $signtool) {
+            $signtool = (Get-ChildItem -Path "C:\Program Files\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName)
+          }
           if (-not $signtool) {
             throw "signtool.exe not found"
           }
