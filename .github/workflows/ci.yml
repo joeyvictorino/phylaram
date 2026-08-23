@@ -94,7 +94,7 @@ jobs:
             throw "signtool.exe not found"
           }
 
-          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys
+          & $signtool sign /fd SHA256 /sha1 $thumbprint bin\phylaram.sys
           if ($LASTEXITCODE -ne 0) {
             throw "Driver test signing failed with exit code $LASTEXITCODE"
           }
@@ -129,7 +129,7 @@ jobs:
           }
 
           foreach ($binary in @("bin\phylaram.exe", "bin\phylaram-verify.exe")) {
-            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 $binary
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT $binary
             if ($LASTEXITCODE -ne 0) {
               throw "Signing failed for $binary with exit code $LASTEXITCODE"
             }
