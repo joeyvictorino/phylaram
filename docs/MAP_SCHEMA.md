@@ -1,114 +1,185 @@
-# PhylaRAM Map Schema Specification (`phylaram-map-2`)
+# PhylaRAM Provenance Map Schema (`phylaram-map-2`)
 
-**Schema Identifier:** `phylaram-map-2`  
-**Standard Status:** Canonical / Production  
-**File Extension:** `.map.json`  
+**Schema identifier:** `phylaram-map-2`  
+**Repository status:** Canonical schema for the current alpha writer  
+**Production validation status:** Not yet complete  
+**File extension:** `.map.json`
 
-Every acquisition produced by PhylaRAM generates a companion provenance map sidecar (`<output>.map.json`). This JSON document records the physical memory layout, acquisition status, byte accounting, live Ring 0 kernel hints, and any isolated unreadable pages with exact NTSTATUS codes.
+This document defines the provenance sidecar emitted for a **finalized** PhylaRAM capture. It is a serialization contract, not a claim of production certification or external endorsement.
 
----
+A finalized bundle contains:
 
-## 1. Top-Level Fields
+```text
+<output>.raw
+<output>.raw.map.json
+<output>.raw.sha256
+```
 
-| Field | Type | Description |
-| :--- | :--- | :--- |
-| `producer` | string | Constant identifier: `"PhylaRAM"` |
-| `producer_version` | string | Version of PhylaRAM that performed the acquisition (e.g. `"0.1.0-alpha"`) |
-| `schema` | string | Schema version: `"phylaram-map-2"` |
-| `status` | string | Terminal status: `"complete"`, `"incomplete"`, or `"failed"` |
-| `logical_size` | integer | Highest physical end address (bytes). Corresponds to the logical file size of the flat RAW image. |
-| `physical_bytes` | integer | Total populated physical RAM across all ranges reported by the kernel (bytes). |
-| `acquired_bytes` | integer | Total physical RAM bytes successfully read and written to disk. |
-| `unreadable_bytes` | integer | Total physical RAM bytes that could not be read due to hardware/kernel errors. |
-| `topology_changed` | boolean | `true` if physical memory layout shifted between session start and end (`MmGetPhysicalMemoryRangesEx2` mismatch). |
-| `sha256` | string | SHA-256 digest computed across the flat logical RAW address space (including sparse holes and zeroed unreadable spans). |
-| `kernel_hints` | object (optional) | Live Ring 0 telemetry captured from the kernel during acquisition. Omitted if unavailable. |
-| `ranges` | array of objects | Ordered list of physical memory runs reported by the OS. |
-| `unreadable` | array of objects | List of isolated unreadable memory spans with error status. Empty on clean acquisition. |
+Hash-free or provenance-free finalized captures are not part of the current product contract.
 
 ---
 
-## 2. Status Outcome Semantics
+## 1. Forensic Semantics
 
-| Status | Exit Code | Invariants |
-| :--- | :---: | :--- |
-| `"complete"` | `0` | All physical runs acquired cleanly. `unreadable_bytes == 0` and `topology_changed == false`. |
-| `"incomplete"` | `2` | Acquisition reached end of RAM, but `unreadable_bytes > 0` or `topology_changed == true`. |
-| `"failed"` | `1` | Acquisition aborted prematurely (Ctrl+C, I/O failure, permission denied, driver load failure). |
+### Physical addressing
 
----
+For populated physical RAM:
 
-## 3. Kernel Hints Object (`kernel_hints`)
+```text
+RAW file offset == physical address
+```
 
-Captured directly from Ring 0 via `IOCTL_PHYLA_QUERY_HINTS` during acquisition:
+The logical RAW size equals the highest end address of the frozen physical-memory ranges.
 
-| Field | Type | Format | Description |
-| :--- | :--- | :--- | :--- |
-| `hypervisor_present` | boolean | bool | `true` if CPUID indicates a hypervisor is present (`CPUID.01H:ECX[31] != 0`). |
-| `directory_table_base` | string | Hex string (`0x...`) | System process CR3 (Directory Table Base). Allows Volatility 3 and MemProcFS to resolve the initial page table without full physical memory scanning. |
-| `kpcr_address` | string | Hex string (`0x...`) | Virtual address of the KPCR structure on the executing processor (`__readgsqword(0x18)`). Provided as an analysis hint. |
-| `kernel_base` | string | Hex string (`0x...`) | NTOSKRNL base virtual address (`RtlPcToFileHeader(&ZwYieldExecution)`). |
-| `kernel_size` | integer | Decimal bytes | NTOSKRNL image size from the PE Optional Header (`SizeOfImage`). |
-| `major_version` | integer | Decimal | Windows major version from `PsGetVersion`. |
-| `minor_version` | integer | Decimal | Windows minor version from `PsGetVersion`. |
-| `build_number` | integer | Decimal | Windows build number (e.g. `19045`, `22631`). |
-| `processors` | integer | Decimal | Active logical processor count (`KeQueryActiveProcessorCountEx`). |
+### `UNREADABLE != ZERO`
+
+The flat RAW representation cannot encode an “unknown byte” symbol. Unreadable physical-memory intervals therefore read as zero bytes in the logical RAW representation, but those representation bytes **MUST NOT** be interpreted as observed zero-valued RAM.
+
+The `unreadable` array is the authoritative semantic distinction. Every unreadable interval records its physical start, length, and observed NTSTATUS.
+
+The offline verifier checks both the provenance geometry and that the RAW representation is zero-backed for intervals declared unreadable.
+
+### Facts, not interpretations
+
+This map records acquisition facts. It does not contain sampled entropy classifications, ATT&CK mappings, compliance claims, heuristic threat labels, or other derived interpretations.
 
 ---
 
-## 4. Ranges Array (`ranges`)
+## 2. Top-Level Fields
 
-Each element represents a physical memory range populated by RAM:
+| Field | Type | Contract |
+| --- | --- | --- |
+| `producer` | string | Exactly `"PhylaRAM"`. |
+| `producer_version` | string | Producer version that emitted the map. |
+| `schema` | string | Current writer emits `"phylaram-map-2"`. |
+| `status` | string | Finalized terminal state: `"complete"` or `"incomplete"`. |
+| `logical_size` | integer | Highest end address among physical-memory ranges; also exact logical RAW file size. |
+| `physical_bytes` | integer | Checked sum of all reported physical-memory run lengths. |
+| `acquired_bytes` | integer | Physical RAM bytes successfully returned and persisted. |
+| `unreadable_bytes` | integer | Checked sum of all unreadable span lengths. |
+| `topology_changed` | boolean | Whether session-end physical topology differed from the frozen session-start snapshot. |
+| `sha256` | string | Exactly 64 hexadecimal characters: SHA-256 of the complete logical RAW byte representation. |
+| `kernel_hints` | object, optional | Acquisition-time analysis hints, omitted if the query was unavailable. |
+| `ranges` | array | Frozen physical-memory ranges. |
+| `unreadable` | array | Ordered non-overlapping unreadable intervals contained within reported physical ranges. |
 
-| Field | Type | Format | Description |
-| :--- | :--- | :--- | :--- |
-| `driver_run` | integer | Decimal | Zero-based index of the run reported by `MmGetPhysicalMemoryRangesEx2`. |
-| `start` | string | Hex string (`0x...`) | Starting physical address (inclusive). |
-| `length` | integer | Decimal bytes | Length of the physical memory run in bytes. |
+The following accounting invariant is mandatory:
+
+```text
+acquired_bytes + unreadable_bytes == physical_bytes
+```
+
+Arithmetic used to establish these relationships must be checked for overflow.
 
 ---
 
-## 5. Unreadable Array (`unreadable`)
+## 3. Terminal Status
 
-Each element represents an isolated unreadable physical memory span:
+Only successfully finalized bundles have final map files.
 
-| Field | Type | Format | Description |
-| :--- | :--- | :--- | :--- |
-| `start` | string | Hex string (`0x...`) | Starting physical address of the unreadable region. |
-| `length` | integer | Decimal bytes | Length of the unreadable span in bytes (typically 4096 or a multiple). |
-| `ntstatus` | string | Hex string (`0x...`, 8 chars) | The exact `NTSTATUS` returned by `MmCopyMemory` (e.g. `"0xC0000001"` for `STATUS_UNSUCCESSFUL`, `"0xC000003E"` for `STATUS_DATA_ERROR`). |
+| Status | Producer exit | Required condition |
+| --- | ---: | --- |
+| `complete` | `0` | `unreadable_bytes == 0` and `topology_changed == false` |
+| `incomplete` | `2` | `unreadable_bytes > 0` or `topology_changed == true` |
+
+A cancelled or failed operation does not publish a successful final map as though it were a finalized evidence bundle. Staging artifacts are cleanup state, not a third final map status.
 
 ---
 
-## 6. Example Document
+## 4. `ranges`
+
+Each entry represents one physical-memory run from the frozen kernel snapshot:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `driver_run` | integer | Original zero-based run index used by the driver protocol. |
+| `start` | string | Physical start address in hexadecimal `0x...` form. |
+| `length` | integer | Positive length in bytes. |
+
+Verifier invariants include:
+
+- length is non-zero;
+- `start + length` does not overflow `u64`;
+- ranges are ordered by physical start and do not overlap;
+- each range ends at or before `logical_size`;
+- the maximum range end equals `logical_size`;
+- checked sum of lengths equals `physical_bytes`;
+- `driver_run` indices are unique and form the expected zero-based domain.
+
+---
+
+## 5. `unreadable`
+
+Each entry represents physical RAM that the acquisition path could not read:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `start` | string | Physical start address in hexadecimal `0x...` form. |
+| `length` | integer | Positive unreadable length in bytes. |
+| `ntstatus` | string | Eight-hex-digit NTSTATUS representation, e.g. `0xC0000001`. |
+
+Verifier invariants include:
+
+- length is non-zero;
+- `start + length` is checked for overflow;
+- spans are ordered and non-overlapping;
+- every span is wholly contained in one reported physical-memory run;
+- checked sum of lengths equals `unreadable_bytes`;
+- RAW bytes in each declared unreadable interval are zero-backed in the flat representation.
+
+The zero-backed representation check does not convert the semantic state into “observed zero.” The map continues to mean “unknown/unreadable at acquisition time.”
+
+---
+
+## 6. `kernel_hints`
+
+When available, the current producer may record:
+
+| Field | Meaning |
+| --- | --- |
+| `hypervisor_present` | CPUID hypervisor-present bit. This does not prove VBS/HVCI state. |
+| `directory_table_base` | System-process CR3 / page-table root captured during acquisition. |
+| `kpcr_address` | KPCR virtual address for the processor executing the query; not necessarily CPU 0. |
+| `kernel_base` | NTOSKRNL virtual base discovered by the kernel helper. |
+| `kernel_size` | NTOSKRNL PE image size. |
+| `major_version` | Windows major version. |
+| `minor_version` | Windows minor version. |
+| `build_number` | Windows build number. |
+| `processors` | Active logical processor count. |
+
+These values are analysis hints. Downstream tooling should validate them rather than treating their presence as proof of a broader security or platform state.
+
+---
+
+## 7. Example
 
 ```json
 {
   "producer": "PhylaRAM",
   "producer_version": "0.1.0-alpha",
   "schema": "phylaram-map-2",
-  "status": "complete",
-  "logical_size": 17179869184,
-  "physical_bytes": 16909336576,
-  "acquired_bytes": 16909336576,
-  "unreadable_bytes": 0,
+  "status": "incomplete",
+  "logical_size": 12288,
+  "physical_bytes": 12288,
+  "acquired_bytes": 8192,
+  "unreadable_bytes": 4096,
   "topology_changed": false,
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "kernel_hints": {
-    "hypervisor_present": true,
-    "directory_table_base": "0x1AA002",
-    "kpcr_address": "0xFFFFF80023400000",
-    "kernel_base": "0xFFFFF80023000000",
-    "kernel_size": 11534336,
-    "major_version": 10,
-    "minor_version": 0,
-    "build_number": 22631,
-    "processors": 8
-  },
+  "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "ranges": [
-    {"driver_run": 0, "start": "0x1000", "length": 651264},
-    {"driver_run": 1, "start": "0x100000", "length": 16908685312}
+    {"driver_run": 0, "start": "0x0", "length": 12288}
   ],
-  "unreadable": []
+  "unreadable": [
+    {"start": "0x1000", "length": 4096, "ntstatus": "0xC0000001"}
+  ]
 }
 ```
+
+The hash in this example is illustrative only.
+
+---
+
+## 8. Compatibility
+
+The verifier currently retains read compatibility with `phylaram-map-1` where its fields satisfy the same structural invariants. The current producer emits only `phylaram-map-2`.
+
+Any future schema change that alters field meaning, terminal semantics, geometry, hashing, or unreadable representation requires an explicit schema/version decision. Existing fields must not be silently reinterpreted.
