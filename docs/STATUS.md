@@ -1,81 +1,107 @@
-# PhylaRAM Current Status & Verification Report
+# PhylaRAM Current Status and Verification Report
 
 **Version:** `0.1.0-alpha`  
 **Date:** August 2026  
-**Repository:** [github.com/joeyvictorino/phylaram](https://github.com/joeyvictorino/phylaram)  
+**Target:** Windows 10 version 2004+ / Windows 11, x64  
 
-This document provides a transparent, auditable report on what has been implemented, what is verified, what remains to be validated on physical hardware, and the roadmap to production EV attestation signing.
-
----
-
-## 1. Build and Toolchain Status
-
-| Component | Target | Toolchain | Status | Verification Evidence |
-| :--- | :--- | :--- | :---: | :--- |
-| **Driver (`phylaram.sys`)** | Windows x64 | MSVC / KMDF 1.15 via NuGet WDK `10.0.26100.1` | **BUILDABLE** | Built in CI via `Directory.Build.props` and `packages.config` |
-| **CLI Engine (`phylaram.exe`)** | Windows x64 | MSVC C++20 (`/std:c++20 /guard:cf /permissive-`) | **BUILDABLE** | Built in CI; embeds `phylaram.sys` as RCDATA resource |
-| **Offline Verifier (`phylaram-verify`)** | Windows / macOS / Linux | Rust 2021 (`cargo build --release`) | **VERIFIED** | 100% test pass on macOS and Windows CI |
-| **Unit & Mock Tests** | Cross-platform | C++20 Clang/MSVC | **VERIFIED** | 4 test suites pass cleanly with `-Wall -Wextra -Werror` |
+This report separates implementation state from verification evidence. A feature being present in source does not mean its runtime or forensic claims have been validated on the required environment.
 
 ---
 
-## 2. Code Signing Status
+## 1. Current Implementation State
 
-> [!WARNING]
-> **Pre-Release Test-Signing Only**  
-> All Windows binaries currently produced in GitHub Actions CI are signed with an ephemeral, self-signed test certificate generated during the CI build (`CN=PhylaRAM Test Signing`).
+The current remediation branch includes:
 
-### Loading on Test Environments
-Because the driver is test-signed, Windows requires Test-Signing mode to load `phylaram.sys`:
-```cmd
-bcdedit /set testsigning on
-:: Reboot required
-```
+- C17 KMDF control driver with exclusive SYSTEM/Administrator access;
+- frozen run-index/offset physical read protocol;
+- device-level synchronization between file cleanup and IOCTL callbacks;
+- preservation of `MmCopyMemory` partial byte counts and NTSTATUS;
+- C++20 acquisition engine with checked byte accounting;
+- mandatory SHA-256 for finalized captures;
+- one shared evidence publication transaction for CLI and GUI;
+- no provenance-free stdout acquisition mode;
+- no hash-free finalized evidence mode;
+- embedded-driver-only implicit trust path;
+- protected temporary driver extraction and transactional service cleanup;
+- Rust 2021 offline verifier with range/unreadable geometry validation;
+- provenance map limited to acquisition facts rather than analytic/compliance interpretation;
+- warning-as-error build configuration, Rust fmt/clippy/tests, portable tests, and CodeQL workflows.
 
-### Path to Production Microsoft Attestation Signing
-To achieve seamless loading on production Windows 10/11 machines with Secure Boot and HVCI enabled:
-1. **Acquire Hardware Token EV Certificate:** Obtain an Extended Validation (EV) Code Signing Certificate from an approved Certificate Authority (DigiCert, Sectigo).
-2. **Enroll in Microsoft Partner Center:** Register the organization in the [Windows Hardware Developer Program](https://developer.microsoft.com/en-us/windows/hardware/).
-3. **Driver Package Preparation:** Package `phylaram.sys` and its companion `.inf` into a signed cabinet (`.cab`) file using `makecab` and `signtool`.
-4. **Attestation Submission:** Submit the package to the Microsoft Hardware Dev Center portal for automated WHQL Attestation Signing.
-5. **Download Signed Package:** Retrieve the Microsoft-signed catalog (`.cat`) and driver binary, valid on all modern Windows installations without disabling driver signature enforcement.
-
-*(Tracked in GitHub Issue [#5](https://github.com/joeyvictorino/phylaram/issues/5))*
+These statements describe source architecture. They do not imply that every platform validation gate below has passed.
 
 ---
 
-## 3. README Claims & Evidence Matrix
+## 2. Automated Repository Checks
 
-Every claim in the PhylaRAM README is mapped directly to source code and validation evidence:
+| Area | Configured check | What it establishes if green |
+| --- | --- | --- |
+| C++ portable models/tests | Clang C++20, `-Wall -Wextra -Werror` | Portable test programs compile cleanly and their assertions pass. |
+| Rust verifier | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` | Formatting, Clippy diagnostics, and verifier tests pass for the CI environment. |
+| Python validation models | fixture/topology scripts | Model/fixture assertions pass; this is not physical hardware validation. |
+| Windows C/C++ | MSBuild on `windows-2022` | Driver and application source build in the configured CI toolchain. |
+| CodeQL | C/C++ security/quality queries | Configured CodeQL analysis completed for the built source. |
 
-| Claim in README | Implementation Location | Validation Evidence |
-| :--- | :--- | :--- |
-| **Strict Physical Addressing (`offset == phys`)** | `cli/raw_writer.cpp` (`PreflightAndOpen`, `SetFilePointerEx`, `FSCTL_SET_SPARSE`) | Tested via range algebra suite and offline verifier schema |
-| **Forensic Truth (`UNREADABLE != ZERO`)** | `cli/acquire.cpp` (16 MiB $\to$ 4 KiB isolation loop, `AddUnreadable`) | `tests/test_mock_acquire.cpp` scenario 2 & 4 (synthetic bad pages) |
-| **Live Kernel Hints (DTB / KPCR / Base)** | `driver/session.c` (`PhylaQueryKernelHints`, `KeStackAttachProcess`) | ABI struct assertions (`shared/phylaram.h`), `test_map_json.cpp` |
-| **Bandwidth Throttling (`--rate-limit`)** | `cli/acquire.cpp` (steady_clock elapsed micro-sleep regulation) | `tests/test_cli_parser.cpp` parser validation |
-| **Stdout Streaming (`-`)** | `cli/raw_writer.cpp` (`_setmode(_fileno(stdout), _O_BINARY)`) | `tests/test_cli_parser.cpp` stdout argument validation |
-| **Provenance Map (`phylaram-map-2`)** | `cli/map.cpp` (`WriteMapJson`), `tools/phylaram-verify/src/schema.rs` | `tests/test_map_json.cpp` schema contract & serialization tests |
-| **Non-PnP Control KMDF Driver** | `driver/driver.c` (`WdfControlDeviceInitAllocate`, SDDL `D:P(A;;GA;;;SY)(A;;GA;;;BA)`) | Code audit, exclusive device access contract |
-| **Offline Verifier (`phylaram-verify`)** | `tools/phylaram-verify/` (Rust crate) | Unit tests, e2e bundle verification, and `proptest` property tests |
+A green CI run is necessary but not sufficient for release readiness.
 
 ---
 
-## 4. Open Validation Gates (Requiring Live Windows VM / Hardware)
+## 3. Signing Status
 
-The following items cannot be fully proven in macOS or GitHub-hosted runners and are tracked as open GitHub issues:
+Current CI/pre-release artifacts are **test-signed** for controlled test environments.
 
-| Gate | Title | Description | GitHub Issue |
-| :---: | :--- | :--- | :---: |
-| **Gate 1** | MSVC & KMDF Automated CI Build | Toolset restored via NuGet in GitHub Actions | [#1](https://github.com/joeyvictorino/phylaram/issues/1) |
-| **Gate 2** | Static Driver Verifier (SDV) & CodeQL | Static analysis requiring local WDK install | [#2](https://github.com/joeyvictorino/phylaram/issues/2) |
-| **Gate 3** | Driver Verifier Dynamic Stress Profile | 100-cycle live acquisition stress test | [#3](https://github.com/joeyvictorino/phylaram/issues/3) |
-| **Gate 4** | Hardware & Memory Topology Matrix | 4 GB to 128 GB+ RAM, ReBAR, NUMA validation | [#4](https://github.com/joeyvictorino/phylaram/issues/4) |
-| **Gate 5** | Production EV / WHQL Attestation Signing | Microsoft Partner Center driver attestation | [#5](https://github.com/joeyvictorino/phylaram/issues/5) |
-| **Gate 6** | Forensic Interoperability Fixtures | Live test image validation in Volatility 3 | [#6](https://github.com/joeyvictorino/phylaram/issues/6) |
+Production deployment with Secure Boot and HVCI requires completion of the production driver-signing gate using the exact Microsoft path selected for release.
+
+Microsoft **attestation signing** and **Windows Hardware Compatibility Program (WHCP/HLK) certification** are distinct submission/certification paths. This repository must not describe them as “WHQL attestation signing.” The production gate remains open until the chosen path is completed and the resulting driver is validated under the stated Windows security controls.
+
+Do not weaken security controls on a production evidence host merely to load an alpha/test-signed driver.
 
 ---
 
-## 5. Summary
+## 4. Open Validation Gates
 
-PhylaRAM `0.1.0-alpha` provides a mathematically sound, forensically honest memory acquisition engine. All code compiles under strict warning-as-error constraints, all algorithms pass extensive property and mock tests, and all known forensic liabilities (guessed VBS status, caller-CR3 instead of System DTB, non-functional pagefile/dmp flags) have been removed.
+These remain release-significant until evidence shows they have actually run and passed.
+
+| Gate | Requirement | State |
+| ---: | --- | --- |
+| 1 | Strict Windows x64 build and packaging in the authoritative toolchain | CI-configured; must remain green at release commit |
+| 2 | Static driver analysis including applicable WDK/SDV checks | Open where dedicated WDK tooling is required |
+| 3 | Driver Verifier stress with repeated acquisition cycles and zero bugchecks/leaks/IRQL violations | **Open** |
+| 4 | Physical/virtual topology matrix including 4 GB through 128 GB+, ReBAR/MMIO holes, NUMA, NTFS/ReFS behavior | **Open** |
+| 5 | Production Microsoft driver signing plus Secure Boot/VBS/HVCI validation without security degradation | **Open** |
+| 6 | Real acquired-image interoperability across supported Windows builds in Volatility 3 and MemProcFS | **Open** |
+
+The corresponding GitHub issues remain the operational tracking records.
+
+---
+
+## 5. Claims the Repository Can Make Today
+
+Subject to the current branch compiling/tests passing, the implementation is designed to provide:
+
+- bounded physical reads derived from a frozen run index rather than arbitrary caller physical addresses;
+- flat physical-address-oriented RAW placement;
+- explicit provenance for unreadable memory rather than semantically treating it as observed zero;
+- exact acquired/unreadable accounting in finalized maps;
+- explicit topology-change status;
+- mandatory logical RAW SHA-256;
+- independent offline structural/hash verification;
+- shared CLI/GUI evidence finalization semantics;
+- fail-closed handling of observed finalization errors.
+
+The repository should **not** currently claim:
+
+- production-ready responder deployment;
+- physical-hardware validation across the support matrix;
+- Driver Verifier completion;
+- production Microsoft driver-signing completion;
+- guaranteed Secure Boot/HVCI compatibility;
+- universal Volatility/MemProcFS interoperability across supported Windows builds;
+- legal admissibility or complete chain of custody merely because `phylaram-verify` passes.
+
+---
+
+## 6. Readiness Rule
+
+PhylaRAM remains alpha until the code, tests, documentation, and stated validation evidence agree.
+
+Implementation does not outrank verification. A gate closes only when the relevant command/hardware/test actually ran and the result was recorded.
