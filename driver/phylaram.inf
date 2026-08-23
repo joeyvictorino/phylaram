@@ -1,0 +1,51 @@
+;
+; PhylaRAM - Physical Memory Acquisition KMDF Driver INF
+; Copyright (c) 2026 Jose Victorino. All rights reserved.
+; Licensed under the MIT License.
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = ActivityMonitor
+ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c0017}
+Provider    = %ProviderString%
+CatalogFile = phylaram.cat
+DriverVer   = 08/22/2026,0.1.0.1
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir          = 12 ; %windir%\system32\drivers
+PhylaRAM_DriverFiles    = 12
+
+[SourceDisksNames]
+1 = %DiskId1%,,,""
+
+[SourceDisksFiles]
+phylaram.sys = 1,,
+
+[DefaultInstall.NTamd64]
+CopyFiles = PhylaRAM_DriverFiles
+
+[DefaultInstall.NTamd64.Services]
+AddService = %ServiceName%,%SERVICE_DEMAND_START%,PhylaRAM_Service_Inst
+
+[PhylaRAM_DriverFiles]
+phylaram.sys
+
+[PhylaRAM_Service_Inst]
+DisplayName    = %ServiceDisplayName%
+Description    = %ServiceDescription%
+ServiceType    = %SERVICE_KERNEL_DRIVER%
+StartType      = %SERVICE_DEMAND_START%
+ErrorControl   = %SERVICE_ERROR_NORMAL%
+ServiceBinary  = %12%\phylaram.sys
+
+[Strings]
+ProviderString          = "PhylaRAM Open Source Project"
+DiskId1                 = "PhylaRAM Installation Disk"
+ServiceName             = "PhylaRAM"
+ServiceDisplayName     = "PhylaRAM Kernel Memory Acquisition Service"
+ServiceDescription     = "Read-only physical memory acquisition driver for Windows digital forensics."
+SERVICE_KERNEL_DRIVER  = 1
+SERVICE_DEMAND_START   = 3
+SERVICE_ERROR_NORMAL   = 1
