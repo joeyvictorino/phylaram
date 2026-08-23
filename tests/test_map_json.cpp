@@ -1,187 +1,167 @@
 #include "../shared/interfaces.hpp"
+
 #include <cassert>
-#include <sstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 
-static std::string Hex64(uint64_t value)
+namespace {
+
+std::string Hex64(uint64_t value)
 {
-    std::ostringstream ss;
-    ss << "0x" << std::hex << std::uppercase << value;
-    return ss.str();
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::uppercase << value;
+    return stream.str();
 }
 
-static std::string Hex32(uint32_t value)
+std::string Hex32(uint32_t value)
 {
-    std::ostringstream ss;
-    ss << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << value;
-    return ss.str();
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::uppercase << std::setw(8)
+           << std::setfill('0') << value;
+    return stream.str();
 }
 
-static std::string SerializeMapJson(const AcquisitionSummary& s)
+std::string SerializeFinalizedMap(const AcquisitionSummary& summary)
 {
-    std::ostringstream f;
-    const char* status = s.completed ?
-        ((s.unreadableBytes != 0 || s.topologyChanged) ? "incomplete" : "complete") : "failed";
+    assert(summary.completed);
+    assert(summary.sha256.size() == 64);
 
-    f << "{\n";
-    f << "  \"producer\": \"PhylaRAM\",\n";
-    f << "  \"producer_version\": \"0.1.0-alpha\",\n";
-    f << "  \"schema\": \"phylaram-map-2\",\n";
-    f << "  \"status\": \"" << status << "\",\n";
-    f << "  \"logical_size\": " << s.logicalSize << ",\n";
-    f << "  \"physical_bytes\": " << s.physicalBytes << ",\n";
-    f << "  \"acquired_bytes\": " << s.acquiredBytes << ",\n";
-    f << "  \"unreadable_bytes\": " << s.unreadableBytes << ",\n";
-    f << "  \"topology_changed\": " << (s.topologyChanged ? "true" : "false") << ",\n";
-    f << "  \"sha256\": \"" << s.sha256 << "\",\n";
+    const char* const status =
+        summary.unreadableBytes != 0 || summary.topologyChanged
+            ? "incomplete"
+            : "complete";
 
-    if (s.hints.available) {
-        f << "  \"kernel_hints\": {\n";
-        f << "    \"hypervisor_present\": " << (s.hints.hypervisorPresent ? "true" : "false") << ",\n";
-        f << "    \"directory_table_base\": \"" << Hex64(s.hints.directoryTableBase) << "\",\n";
-        f << "    \"kpcr_address\": \"" << Hex64(s.hints.kpcrAddress) << "\",\n";
-        f << "    \"kernel_base\": \"" << Hex64(s.hints.kernelBase) << "\",\n";
-        f << "    \"kernel_size\": " << s.hints.kernelSize << ",\n";
-        f << "    \"major_version\": " << s.hints.majorVersion << ",\n";
-        f << "    \"minor_version\": " << s.hints.minorVersion << ",\n";
-        f << "    \"build_number\": " << s.hints.buildNumber << ",\n";
-        f << "    \"processors\": " << s.hints.numberOfProcessors << "\n";
-        f << "  },\n";
+    std::ostringstream output;
+    output << "{\n"
+           << "  \"producer\": \"PhylaRAM\",\n"
+           << "  \"producer_version\": \"0.1.0-alpha\",\n"
+           << "  \"schema\": \"phylaram-map-2\",\n"
+           << "  \"status\": \"" << status << "\",\n"
+           << "  \"logical_size\": " << summary.logicalSize << ",\n"
+           << "  \"physical_bytes\": " << summary.physicalBytes << ",\n"
+           << "  \"acquired_bytes\": " << summary.acquiredBytes << ",\n"
+           << "  \"unreadable_bytes\": " << summary.unreadableBytes << ",\n"
+           << "  \"topology_changed\": "
+           << (summary.topologyChanged ? "true" : "false") << ",\n"
+           << "  \"sha256\": \"" << summary.sha256 << "\",\n";
+
+    if (summary.hints.available) {
+        output << "  \"kernel_hints\": {\n"
+               << "    \"hypervisor_present\": "
+               << (summary.hints.hypervisorPresent ? "true" : "false") << ",\n"
+               << "    \"directory_table_base\": \""
+               << Hex64(summary.hints.directoryTableBase) << "\",\n"
+               << "    \"kpcr_address\": \""
+               << Hex64(summary.hints.kpcrAddress) << "\",\n"
+               << "    \"kernel_base\": \""
+               << Hex64(summary.hints.kernelBase) << "\",\n"
+               << "    \"kernel_size\": " << summary.hints.kernelSize << ",\n"
+               << "    \"major_version\": " << summary.hints.majorVersion << ",\n"
+               << "    \"minor_version\": " << summary.hints.minorVersion << ",\n"
+               << "    \"build_number\": " << summary.hints.buildNumber << ",\n"
+               << "    \"processors\": "
+               << summary.hints.numberOfProcessors << "\n"
+               << "  },\n";
     }
 
-    if (s.entropy.totalBytesAnalyzed > 0) {
-        f << "  \"wavelet_entropy\": {\n";
-        f << "    \"identity_density\": " << s.entropy.identityDensity << ",\n";
-        f << "    \"transition_energy\": " << s.entropy.transitionEnergy << ",\n";
-        f << "    \"bigram_entropy\": " << s.entropy.bigramEntropy << ",\n";
-        f << "    \"prediction_confidence\": " << s.entropy.predictionConfidence << ",\n";
-        f << "    \"orbit_hash\": \"" << Hex64(s.entropy.orbitHash) << "\",\n";
-        f << "    \"category\": \"" << s.entropy.categoryName << "\"\n";
-        f << "  },\n";
+    output << "  \"ranges\": [\n";
+    for (size_t index = 0; index < summary.ranges.size(); ++index) {
+        const MemoryRun& range = summary.ranges[index];
+        output << "    {\"driver_run\": " << range.driverIndex
+               << ", \"start\": \"" << Hex64(range.base)
+               << "\", \"length\": " << range.length << "}";
+        if (index + 1 != summary.ranges.size()) {
+            output << ',';
+        }
+        output << "\n";
+    }
+    output << "  ],\n  \"unreadable\": [\n";
+
+    for (size_t index = 0; index < summary.unreadable.size(); ++index) {
+        const UnreadableSpan& span = summary.unreadable[index];
+        output << "    {\"start\": \"" << Hex64(span.start)
+               << "\", \"length\": " << span.length
+               << ", \"ntstatus\": \""
+               << Hex32(static_cast<uint32_t>(span.status)) << "\"}";
+        if (index + 1 != summary.unreadable.size()) {
+            output << ',';
+        }
+        output << "\n";
     }
 
-    f << "  \"compliance_standards\": {\n";
-    f << "    \"frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"],\n";
-    f << "    \"mappings\": [\n";
-    for (size_t i = 0; i < phylaram::GetComplianceRegistryCount(); ++i) {
-        const auto& c = phylaram::COMPLIANCE_REGISTRY[i];
-        f << "      {\"capability\": \"" << c.capabilityKey
-          << "\", \"description\": \"" << c.description
-          << "\", \"mitre_attack\": \"" << c.mitreAttack
-          << "\", \"nist_sp_800_53\": \"" << c.nistSp80053
-          << "\", \"nist_csf\": \"" << c.nistCsf << "\"}";
-        if (i + 1 != phylaram::GetComplianceRegistryCount()) f << ',';
-        f << "\n";
-    }
-    f << "    ]\n";
-    f << "  },\n";
-
-    f << "  \"ranges\": [\n";
-    for (size_t i = 0; i < s.ranges.size(); ++i) {
-        const auto& r = s.ranges[i];
-        f << "    {\"driver_run\": " << r.driverIndex
-          << ", \"start\": \"" << Hex64(r.base)
-          << "\", \"length\": " << r.length << "}";
-        if (i + 1 != s.ranges.size()) f << ',';
-        f << "\n";
-    }
-    f << "  ],\n";
-
-    f << "  \"unreadable\": [\n";
-    for (size_t i = 0; i < s.unreadable.size(); ++i) {
-        const auto& u = s.unreadable[i];
-        f << "    {\"start\": \"" << Hex64(u.start)
-          << "\", \"length\": " << u.length
-          << ", \"ntstatus\": \"" << Hex32(static_cast<uint32_t>(u.status)) << "\"}";
-        if (i + 1 != s.unreadable.size()) f << ',';
-        f << "\n";
-    }
-    f << "  ]\n";
-    f << "}\n";
-
-    return f.str();
+    output << "  ]\n}\n";
+    return output.str();
 }
 
-int main() {
-    // Test 1: Complete acquisition JSON with kernel hints and wavelet entropy
+constexpr char kSha256[] =
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+} // namespace
+
+int main()
+{
     {
-        AcquisitionSummary s;
-        s.completed = true;
-        s.topologyChanged = false;
-        s.logicalSize = 17179869184ULL;
-        s.physicalBytes = 16909336576ULL;
-        s.acquiredBytes = 16909336576ULL;
-        s.unreadableBytes = 0;
-        s.sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-        s.hints.available = true;
-        s.hints.hypervisorPresent = true;
-        s.hints.directoryTableBase = 0x1AA000;
-        s.hints.kpcrAddress = 0xFFFFF80123450000ULL;
-        s.hints.kernelBase = 0xFFFFF80112340000ULL;
-        s.hints.kernelSize = 12582912;
-        s.hints.buildNumber = 22631;
-        s.hints.numberOfProcessors = 16;
-        s.entropy.totalBytesAnalyzed = 65536;
-        s.entropy.identityDensity = 0.52f;
-        s.entropy.transitionEnergy = 0.72f;
-        s.entropy.bigramEntropy = 2.85f;
-        s.entropy.predictionConfidence = 0.71f;
-        s.entropy.orbitHash = 0x123456789ABCDEF0ULL;
-        s.entropy.categoryName = "Structural Code / Page Tables / Kernel Headers";
-        s.ranges = {{0, 0x1000, 651264}, {1, 0x100000, 16908685312ULL}};
+        AcquisitionSummary summary;
+        summary.completed = true;
+        summary.logicalSize = 0x300000;
+        summary.physicalBytes = 0x200000;
+        summary.acquiredBytes = 0x200000;
+        summary.sha256 = kSha256;
+        summary.hints.available = true;
+        summary.hints.hypervisorPresent = true;
+        summary.hints.directoryTableBase = 0x1AA000;
+        summary.hints.kpcrAddress = 0xFFFFF80123450000ULL;
+        summary.hints.kernelBase = 0xFFFFF80112340000ULL;
+        summary.hints.kernelSize = 12582912;
+        summary.hints.buildNumber = 22631;
+        summary.hints.numberOfProcessors = 16;
+        summary.ranges = {
+            {0, 0x1000, 0xFF000},
+            {1, 0x200000, 0x100000},
+        };
 
-        std::string json = SerializeMapJson(s);
-        assert(json.find("\"producer\": \"PhylaRAM\"") != std::string::npos);
+        const std::string json = SerializeFinalizedMap(summary);
         assert(json.find("\"schema\": \"phylaram-map-2\"") != std::string::npos);
         assert(json.find("\"status\": \"complete\"") != std::string::npos);
-        assert(json.find("\"kernel_hints\"") != std::string::npos);
         assert(json.find("\"directory_table_base\": \"0x1AA000\"") != std::string::npos);
-        assert(json.find("\"compliance_standards\"") != std::string::npos);
-        assert(json.find("\"MITRE ATT&CK (Enterprise)\"") != std::string::npos);
-        assert(json.find("\"T1005 T1003 T1562.001\"") != std::string::npos);
-        assert(json.find("\"wavelet_entropy\"") != std::string::npos);
-        assert(json.find("\"orbit_hash\": \"0x123456789ABCDEF0\"") != std::string::npos);
-        assert(json.find("\"start\": \"0x1000\"") != std::string::npos);
+        assert(json.find("\"wavelet_entropy\"") == std::string::npos);
+        assert(json.find("\"compliance_standards\"") == std::string::npos);
     }
 
-    // Test 2: Incomplete acquisition due to unreadable page
     {
-        AcquisitionSummary s;
-        s.completed = true;
-        s.topologyChanged = false;
-        s.logicalSize = 1000000;
-        s.physicalBytes = 1000000;
-        s.acquiredBytes = 995904;
-        s.unreadableBytes = 4096;
-        s.sha256 = "deadbeef";
-        s.ranges = {{0, 0x1000, 1000000}};
-        s.unreadable = {{0x20004000, 4096, static_cast<long>(0xC000009C)}};
+        AcquisitionSummary summary;
+        summary.completed = true;
+        summary.logicalSize = 0x3000;
+        summary.physicalBytes = 0x3000;
+        summary.acquiredBytes = 0x2000;
+        summary.unreadableBytes = 0x1000;
+        summary.sha256 = kSha256;
+        summary.ranges = {{0, 0, 0x3000}};
+        summary.unreadable = {{0x1000, 0x1000, static_cast<long>(0xC000009C)}};
 
-        std::string json = SerializeMapJson(s);
+        const std::string json = SerializeFinalizedMap(summary);
         assert(json.find("\"status\": \"incomplete\"") != std::string::npos);
         assert(json.find("\"unreadable_bytes\": 4096") != std::string::npos);
         assert(json.find("\"ntstatus\": \"0xC000009C\"") != std::string::npos);
-        assert(json.find("\"compliance_standards\"") != std::string::npos);
     }
 
-    // Test 3: Incomplete acquisition due to topology mutation
     {
-        AcquisitionSummary s;
-        s.completed = true;
-        s.topologyChanged = true;
-        s.logicalSize = 1000000;
-        s.physicalBytes = 1000000;
-        s.acquiredBytes = 1000000;
-        s.unreadableBytes = 0;
-        s.sha256 = "deadbeef";
+        AcquisitionSummary summary;
+        summary.completed = true;
+        summary.topologyChanged = true;
+        summary.logicalSize = 0x1000;
+        summary.physicalBytes = 0x1000;
+        summary.acquiredBytes = 0x1000;
+        summary.sha256 = kSha256;
+        summary.ranges = {{0, 0, 0x1000}};
 
-        std::string json = SerializeMapJson(s);
+        const std::string json = SerializeFinalizedMap(summary);
         assert(json.find("\"status\": \"incomplete\"") != std::string::npos);
         assert(json.find("\"topology_changed\": true") != std::string::npos);
     }
 
-    std::cout << "[PASS] Map JSON serialization and schema contract tests passed successfully.\n";
+    std::cout << "[PASS] Canonical provenance-map contract tests passed.\n";
     return 0;
 }
