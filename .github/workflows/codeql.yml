@@ -1,0 +1,48 @@
+name: "CodeQL Security Analysis"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze-cpp:
+    name: CodeQL (C/C++)
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore WDK NuGet packages
+        run: nuget restore packages.config -PackagesDirectory packages
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          queries: security-extended,security-and-quality
+
+      - name: Build Driver (Release | x64)
+        run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
+
+      - name: Build CLI (Release | x64)
+        run: msbuild cli\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /v:minimal /m
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"

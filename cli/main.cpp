@@ -71,11 +71,14 @@ static void Usage()
 {
     std::wcout << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
                << L"Usage:\n"
-               << L"  phylaram.exe <output.raw | -> [options]\n\n"
+               << L"  phylaram.exe <output.raw | -> [options]\n"
+               << L"  phylaram.exe --dry-run [--json]\n\n"
                << L"Arguments:\n"
                << L"  <output.raw>        Target raw image destination (supports UNC paths, e.g. \\\\server\\share\\mem.raw)\n"
                << L"  -                   Stream raw physical memory directly to standard output (stdout)\n\n"
                << L"Options:\n"
+               << L"  --dry-run           Inspect physical memory topology and kernel hints without writing to disk\n"
+               << L"  --json              Format dry-run or telemetry output as structured JSON\n"
                << L"  --rate-limit <MB>   Throttle maximum acquisition bandwidth in MB/s (e.g. --rate-limit 200)\n"
                << L"  --quiet             Suppress statistics and interactive progress output\n"
                << L"  --no-hash           Skip logical SHA-256 calculation and .sha256 sidecar\n"
@@ -91,6 +94,8 @@ int wmain(int argc, wchar_t** argv)
 
     bool quiet = false;
     bool hashEnabled = true;
+    bool dryRun = false;
+    bool jsonOutput = false;
     uint32_t rateLimitMBps = 0;
     std::wstring output;
 
@@ -100,6 +105,10 @@ int wmain(int argc, wchar_t** argv)
             quiet = true;
         } else if (arg == L"--no-hash") {
             hashEnabled = false;
+        } else if (arg == L"--dry-run") {
+            dryRun = true;
+        } else if (arg == L"--json") {
+            jsonOutput = true;
         } else if (arg == L"--rate-limit" || arg == L"--throttle") {
             if (i + 1 < argc) {
                 rateLimitMBps = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -121,14 +130,14 @@ int wmain(int argc, wchar_t** argv)
         }
     }
 
-    if (output.empty()) {
+    if (output.empty() && !dryRun) {
         Usage();
         return 1;
     }
 
     bool isStdout = (output == L"-");
-    if (isStdout) {
-        quiet = true; // Automatically suppress stdout progress when streaming binary to stdout
+    if (isStdout || jsonOutput) {
+        quiet = true; // Automatically suppress interactive text progress
     }
 
     // Preflight collision reservation for all 6 target and staging file paths
@@ -139,7 +148,7 @@ int wmain(int argc, wchar_t** argv)
     const std::wstring hashFinal = output + L".sha256";
     const std::wstring hashPartial = output + L".sha256.partial";
 
-    if (!isStdout) {
+    if (!isStdout && !dryRun) {
         if (PathExists(rawFinal) || PathExists(rawPartial) ||
             PathExists(mapFinal) || PathExists(mapPartial) ||
             (hashEnabled && (PathExists(hashFinal) || PathExists(hashPartial)))) {
@@ -191,6 +200,42 @@ int wmain(int argc, wchar_t** argv)
         std::vector<MemoryRun> runs;
         if (!device.Query(highestEnd, totalBytes, runs)) {
             std::wcerr << L"Unable to query memory layout. Error " << device.LastError() << L"\n";
+            break;
+        }
+
+        if (dryRun) {
+            device.QueryHints(summary.hints);
+            if (jsonOutput) {
+                std::wcout << L"{\n"
+                           << L"  \"dry_run\": true,\n"
+                           << L"  \"logical_size\": " << highestEnd << L",\n"
+                           << L"  \"physical_bytes\": " << totalBytes << L",\n"
+                           << L"  \"range_count\": " << runs.size() << L",\n"
+                           << L"  \"kernel_hints\": {\n"
+                           << L"    \"hypervisor_present\": " << (summary.hints.hypervisorPresent ? L"true" : L"false") << L",\n"
+                           << L"    \"directory_table_base\": \"0x" << std::hex << std::uppercase << summary.hints.directoryTableBase << std::dec << L"\",\n"
+                           << L"    \"kpcr_address\": \"0x" << std::hex << std::uppercase << summary.hints.kpcrAddress << std::dec << L"\",\n"
+                           << L"    \"kernel_base\": \"0x" << std::hex << std::uppercase << summary.hints.kernelBase << std::dec << L"\",\n"
+                           << L"    \"kernel_size\": " << summary.hints.kernelSize << L",\n"
+                           << L"    \"build_number\": " << summary.hints.buildNumber << L"\n"
+                           << L"  }\n"
+                           << L"}\n";
+            } else {
+                std::wcout << L"PhylaRAM 0.1.0-alpha — Dry-Run Topology & Kernel Hints\n\n"
+                           << L"Physical RAM    : " << (totalBytes / (1024ull * 1024ull)) << L" MiB (" << totalBytes << L" bytes)\n"
+                           << L"Highest Address : 0x" << std::hex << std::uppercase << highestEnd << std::dec << L"\n"
+                           << L"Memory Ranges   : " << runs.size() << L"\n";
+                if (summary.hints.available) {
+                    std::wcout << L"System DTB (CR3): 0x" << std::hex << std::uppercase << summary.hints.directoryTableBase << std::dec << L"\n"
+                               << L"Executing KPCR  : 0x" << std::hex << std::uppercase << summary.hints.kpcrAddress << std::dec << L"\n"
+                               << L"Kernel Base     : 0x" << std::hex << std::uppercase << summary.hints.kernelBase << std::dec << L"\n"
+                               << L"Kernel Size     : " << summary.hints.kernelSize << L" bytes\n"
+                               << L"Windows Build   : " << summary.hints.majorVersion << L"." << summary.hints.minorVersion << L"." << summary.hints.buildNumber << L"\n"
+                               << L"Hypervisor      : " << (summary.hints.hypervisorPresent ? L"Present" : L"None") << L"\n";
+                }
+                std::wcout << L"\n[PASS] Dry-run completed successfully. Zero bytes written to disk.\n";
+            }
+            exitCode = 0;
             break;
         }
 

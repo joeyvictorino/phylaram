@@ -7,6 +7,8 @@ struct CliOptions {
     std::wstring output;
     bool quiet = false;
     bool hashEnabled = true;
+    bool dryRun = false;
+    bool jsonOutput = false;
     uint32_t rateLimitMBps = 0;
     bool showHelp = false;
     bool valid = false;
@@ -25,6 +27,10 @@ CliOptions ParseArgs(const std::vector<std::wstring>& args) {
             opt.quiet = true;
         } else if (arg == L"--no-hash") {
             opt.hashEnabled = false;
+        } else if (arg == L"--dry-run") {
+            opt.dryRun = true;
+        } else if (arg == L"--json") {
+            opt.jsonOutput = true;
         } else if (arg == L"--rate-limit" || arg == L"--throttle") {
             if (i + 1 < args.size()) {
                 opt.rateLimitMBps = static_cast<uint32_t>(std::stoi(args[++i]));
@@ -48,7 +54,7 @@ CliOptions ParseArgs(const std::vector<std::wstring>& args) {
         }
     }
 
-    opt.valid = !opt.output.empty();
+    opt.valid = opt.showHelp || opt.dryRun || !opt.output.empty();
     return opt;
 }
 
@@ -62,6 +68,8 @@ int main() {
         assert(opt.hashEnabled);
         assert(opt.rateLimitMBps == 0);
         assert(!opt.showHelp);
+        assert(!opt.dryRun);
+        assert(!opt.jsonOutput);
     }
 
     // 2. Advanced flags: --quiet, --no-hash, --rate-limit
@@ -89,19 +97,37 @@ int main() {
         assert(opt2.valid && opt2.showHelp);
     }
 
-    // 5. Invalid flag rejection
+    // 5. Dry-run and JSON telemetry flags
+    {
+        auto opt1 = ParseArgs({L"--dry-run"});
+        assert(opt1.valid);
+        assert(opt1.dryRun);
+        assert(!opt1.jsonOutput);
+
+        auto opt2 = ParseArgs({L"--dry-run", L"--json"});
+        assert(opt2.valid);
+        assert(opt2.dryRun);
+        assert(opt2.jsonOutput);
+
+        auto opt3 = ParseArgs({L"image.raw", L"--json"});
+        assert(opt3.valid);
+        assert(!opt3.dryRun);
+        assert(opt3.jsonOutput);
+    }
+
+    // 6. Invalid flag rejection
     {
         auto opt = ParseArgs({L"memory.raw", L"--compress"});
         assert(!opt.valid);
     }
 
-    // 6. Missing rate-limit argument rejection
+    // 7. Missing rate-limit argument rejection
     {
         auto opt = ParseArgs({L"memory.raw", L"--rate-limit"});
         assert(!opt.valid);
     }
 
-    // 7. Multiple positional files rejection
+    // 8. Multiple positional files rejection
     {
         auto opt = ParseArgs({L"memory.raw", L"extra.raw"});
         assert(!opt.valid);
