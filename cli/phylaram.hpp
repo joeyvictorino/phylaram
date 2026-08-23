@@ -149,9 +149,13 @@ private:
     bool initialized_ = false;
 };
 
+using ProgressCallback = void(*)(uint64_t acquiredBytes, uint64_t totalBytes, double speedMBs, uint32_t etaSeconds, void* userData);
+
 struct AcquisitionConfig {
     bool quiet = false;
     uint32_t rateLimitMBps = 0; // 0 = unlimited, >0 = throttle speed in MB/s
+    ProgressCallback onProgress = nullptr;
+    void* callbackData = nullptr;
 };
 
 bool ExtractEmbeddedDriver(std::wstring& driverPathOut);
@@ -168,3 +172,5 @@ bool Acquire(IDeviceSession& device,
              AcquisitionSummary& summary,
              std::atomic_bool& cancelled,
              const AcquisitionConfig& config);
+
+int LaunchGui(HINSTANCE hInstance);

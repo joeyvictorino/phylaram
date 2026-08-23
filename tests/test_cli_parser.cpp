@@ -9,6 +9,7 @@ struct CliOptions {
     bool hashEnabled = true;
     bool dryRun = false;
     bool jsonOutput = false;
+    bool guiMode = false;
     uint32_t rateLimitMBps = 0;
     bool showHelp = false;
     bool valid = false;
@@ -17,13 +18,18 @@ struct CliOptions {
 CliOptions ParseArgs(const std::vector<std::wstring>& args) {
     CliOptions opt;
     if (args.empty()) {
-        opt.valid = false;
+        opt.valid = true;
+        opt.guiMode = true;
         return opt;
     }
 
     for (size_t i = 0; i < args.size(); ++i) {
         const auto& arg = args[i];
-        if (arg == L"--quiet") {
+        if (arg == L"--gui") {
+            opt.guiMode = true;
+            opt.valid = true;
+            return opt;
+        } else if (arg == L"--quiet") {
             opt.quiet = true;
         } else if (arg == L"--no-hash") {
             opt.hashEnabled = false;
@@ -54,7 +60,7 @@ CliOptions ParseArgs(const std::vector<std::wstring>& args) {
         }
     }
 
-    opt.valid = opt.showHelp || opt.dryRun || !opt.output.empty();
+    opt.valid = opt.showHelp || opt.dryRun || opt.guiMode || !opt.output.empty();
     return opt;
 }
 
@@ -131,6 +137,17 @@ int main() {
     {
         auto opt = ParseArgs({L"memory.raw", L"extra.raw"});
         assert(!opt.valid);
+    }
+
+    // 9. GUI mode (no-args / double-click and --gui flag)
+    {
+        auto optNoArgs = ParseArgs({});
+        assert(optNoArgs.valid);
+        assert(optNoArgs.guiMode);
+
+        auto optGui = ParseArgs({L"--gui"});
+        assert(optGui.valid);
+        assert(optGui.guiMode);
     }
 
     std::cout << "[PASS] CLI parser validation tests passed successfully.\n";

@@ -71,25 +71,28 @@ static void Usage()
 {
     std::wcout << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
                << L"Usage:\n"
+               << L"  phylaram.exe [options]\n"
                << L"  phylaram.exe <output.raw | -> [options]\n"
-               << L"  phylaram.exe --dry-run [--json]\n\n"
+               << L"  phylaram.exe --dry-run [--json]\n"
+               << L"  phylaram.exe --gui\n\n"
                << L"Arguments:\n"
                << L"  <output.raw>        Target raw image destination (supports UNC paths, e.g. \\\\server\\share\\mem.raw)\n"
                << L"  -                   Stream raw physical memory directly to standard output (stdout)\n\n"
                << L"Options:\n"
+               << L"  --gui               Launch the native Windows 11 Fluent Graphical User Interface\n"
                << L"  --dry-run           Inspect physical memory topology and kernel hints without writing to disk\n"
-               << L"  --json              Format dry-run or telemetry output as structured JSON\n"
-               << L"  --rate-limit <MB>   Throttle maximum acquisition bandwidth in MB/s (e.g. --rate-limit 200)\n"
-               << L"  --quiet             Suppress statistics and interactive progress output\n"
-               << L"  --no-hash           Skip logical SHA-256 calculation and .sha256 sidecar\n"
+               << L"  --json              Output telemetry and forensic metadata in structured JSON\n"
+               << L"  --rate-limit <MB/s> Throttle acquisition throughput to avoid bus/disk contention (0 = unlimited)\n"
+               << L"  --no-hash           Disable inline cryptographic SHA-256 calculation\n"
+               << L"  --quiet             Suppress interactive console progress and speed/ETA telemetry\n"
                << L"  --help, -h          Display this help message\n";
 }
 
 int wmain(int argc, wchar_t** argv)
 {
     if (argc < 2) {
-        Usage();
-        return 1;
+        // Double-click / Interactive launch with no args -> Launch native Fluent GUI
+        return LaunchGui(GetModuleHandleW(nullptr));
     }
 
     bool quiet = false;
@@ -101,7 +104,9 @@ int wmain(int argc, wchar_t** argv)
 
     for (int i = 1; i < argc; ++i) {
         std::wstring arg = argv[i];
-        if (arg == L"--quiet") {
+        if (arg == L"--gui") {
+            return LaunchGui(GetModuleHandleW(nullptr));
+        } else if (arg == L"--quiet") {
             quiet = true;
         } else if (arg == L"--no-hash") {
             hashEnabled = false;

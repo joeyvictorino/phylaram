@@ -49,7 +49,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>bcrypt.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>bcrypt.lib;advapi32.lib;user32.lib;gdi32.lib;shell32.lib;comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <CETCompat>true</CETCompat>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
@@ -61,6 +61,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="gui.cpp" />
     <ClCompile Include="device.cpp" />
     <ClCompile Include="driver_resource.cpp" />
     <ClCompile Include="driver_service.cpp" />
@@ -69,6 +70,7 @@
     <ClCompile Include="map.cpp" />
     <ClCompile Include="acquire.cpp" />
     <ClInclude Include="phylaram.hpp" />
+    <ClInclude Include="gui.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="..\shared\phylaram.h" />
     <ClInclude Include="..\shared\interfaces.hpp" />

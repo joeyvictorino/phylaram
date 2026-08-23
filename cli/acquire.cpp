@@ -172,7 +172,7 @@ bool Acquire(IDeviceSession& device,
                 }
             }
 
-            if (!config.quiet && summary.physicalBytes != 0) {
+            if (summary.physicalBytes != 0) {
                 uint64_t percent = (processedPhysical * 100) / summary.physicalBytes;
                 auto now = std::chrono::steady_clock::now();
                 auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - transferStartTime).count();
@@ -185,12 +185,18 @@ bool Acquire(IDeviceSession& device,
                     uint32_t etaM = static_cast<uint32_t>(etaSecs) / 60;
                     uint32_t etaS = static_cast<uint32_t>(etaSecs) % 60;
 
-                    std::wostringstream ss;
-                    ss << L"\rAcquiring: " << std::setw(3) << percent << L"% ["
-                       << (processedPhysical / (1024ull * 1024ull)) << L" / " << (summary.physicalBytes / (1024ull * 1024ull)) << L" MiB] "
-                       << L"[" << std::fixed << std::setprecision(1) << speedMBs << L" MB/s] "
-                       << L"[ETA: " << std::setfill(L'0') << std::setw(2) << etaM << L":" << std::setw(2) << etaS << L"]   ";
-                    std::wcout << ss.str() << std::flush;
+                    if (config.onProgress) {
+                        config.onProgress(processedPhysical, summary.physicalBytes, speedMBs, static_cast<uint32_t>(etaSecs), config.callbackData);
+                    }
+
+                    if (!config.quiet) {
+                        std::wostringstream ss;
+                        ss << L"\rAcquiring: " << std::setw(3) << percent << L"% ["
+                           << (processedPhysical / (1024ull * 1024ull)) << L" / " << (summary.physicalBytes / (1024ull * 1024ull)) << L" MiB] "
+                           << L"[" << std::fixed << std::setprecision(1) << speedMBs << L" MB/s] "
+                           << L"[ETA: " << std::setfill(L'0') << std::setw(2) << etaM << L":" << std::setw(2) << etaS << L"]   ";
+                        std::wcout << ss.str() << std::flush;
+                    }
                 }
             }
         }
