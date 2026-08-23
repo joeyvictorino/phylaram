@@ -51,6 +51,33 @@ static std::string SerializeMapJson(const AcquisitionSummary& s)
         f << "  },\n";
     }
 
+    if (s.entropy.totalBytesAnalyzed > 0) {
+        f << "  \"wavelet_entropy\": {\n";
+        f << "    \"identity_density\": " << s.entropy.identityDensity << ",\n";
+        f << "    \"transition_energy\": " << s.entropy.transitionEnergy << ",\n";
+        f << "    \"bigram_entropy\": " << s.entropy.bigramEntropy << ",\n";
+        f << "    \"prediction_confidence\": " << s.entropy.predictionConfidence << ",\n";
+        f << "    \"orbit_hash\": \"" << Hex64(s.entropy.orbitHash) << "\",\n";
+        f << "    \"category\": \"" << s.entropy.categoryName << "\"\n";
+        f << "  },\n";
+    }
+
+    f << "  \"compliance_standards\": {\n";
+    f << "    \"frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"],\n";
+    f << "    \"mappings\": [\n";
+    for (size_t i = 0; i < phylaram::GetComplianceRegistryCount(); ++i) {
+        const auto& c = phylaram::COMPLIANCE_REGISTRY[i];
+        f << "      {\"capability\": \"" << c.capabilityKey
+          << "\", \"description\": \"" << c.description
+          << "\", \"mitre_attack\": \"" << c.mitreAttack
+          << "\", \"nist_sp_800_53\": \"" << c.nistSp80053
+          << "\", \"nist_csf\": \"" << c.nistCsf << "\"}";
+        if (i + 1 != phylaram::GetComplianceRegistryCount()) f << ',';
+        f << "\n";
+    }
+    f << "    ]\n";
+    f << "  },\n";
+
     f << "  \"ranges\": [\n";
     for (size_t i = 0; i < s.ranges.size(); ++i) {
         const auto& r = s.ranges[i];
@@ -78,7 +105,7 @@ static std::string SerializeMapJson(const AcquisitionSummary& s)
 }
 
 int main() {
-    // Test 1: Complete acquisition JSON with kernel hints
+    // Test 1: Complete acquisition JSON with kernel hints and wavelet entropy
     {
         AcquisitionSummary s;
         s.completed = true;
@@ -96,6 +123,13 @@ int main() {
         s.hints.kernelSize = 12582912;
         s.hints.buildNumber = 22631;
         s.hints.numberOfProcessors = 16;
+        s.entropy.totalBytesAnalyzed = 65536;
+        s.entropy.identityDensity = 0.52f;
+        s.entropy.transitionEnergy = 0.72f;
+        s.entropy.bigramEntropy = 2.85f;
+        s.entropy.predictionConfidence = 0.71f;
+        s.entropy.orbitHash = 0x123456789ABCDEF0ULL;
+        s.entropy.categoryName = "Structural Code / Page Tables / Kernel Headers";
         s.ranges = {{0, 0x1000, 651264}, {1, 0x100000, 16908685312ULL}};
 
         std::string json = SerializeMapJson(s);
@@ -104,6 +138,11 @@ int main() {
         assert(json.find("\"status\": \"complete\"") != std::string::npos);
         assert(json.find("\"kernel_hints\"") != std::string::npos);
         assert(json.find("\"directory_table_base\": \"0x1AA000\"") != std::string::npos);
+        assert(json.find("\"compliance_standards\"") != std::string::npos);
+        assert(json.find("\"MITRE ATT&CK (Enterprise)\"") != std::string::npos);
+        assert(json.find("\"T1005 T1003 T1562.001\"") != std::string::npos);
+        assert(json.find("\"wavelet_entropy\"") != std::string::npos);
+        assert(json.find("\"orbit_hash\": \"0x123456789ABCDEF0\"") != std::string::npos);
         assert(json.find("\"start\": \"0x1000\"") != std::string::npos);
     }
 
@@ -124,6 +163,7 @@ int main() {
         assert(json.find("\"status\": \"incomplete\"") != std::string::npos);
         assert(json.find("\"unreadable_bytes\": 4096") != std::string::npos);
         assert(json.find("\"ntstatus\": \"0xC000009C\"") != std::string::npos);
+        assert(json.find("\"compliance_standards\"") != std::string::npos);
     }
 
     // Test 3: Incomplete acquisition due to topology mutation

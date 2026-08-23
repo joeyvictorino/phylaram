@@ -27,8 +27,8 @@ fn test_e2e_valid_bundle_verification() {
 
     let map = MapFile {
         producer: "PhylaRAM".to_string(),
-        producer_version: "1.0.0".to_string(),
-        schema: "phylaram-map-1".to_string(),
+        producer_version: "0.1.0-alpha".to_string(),
+        schema: "phylaram-map-2".to_string(),
         status: "complete".to_string(),
         logical_size: 1024 * 1024,
         physical_bytes: 0x1000 + 0x20000,
@@ -37,6 +37,8 @@ fn test_e2e_valid_bundle_verification() {
         topology_changed: false,
         sha256: hash_hex.clone(),
         kernel_hints: None,
+        wavelet_entropy: None,
+        compliance_standards: None,
         ranges: vec![
             RangeEntry {
                 driver_run: 0,
@@ -75,8 +77,8 @@ fn test_e2e_incomplete_unreadable_verification() {
 
     let map = MapFile {
         producer: "PhylaRAM".to_string(),
-        producer_version: "1.0.0".to_string(),
-        schema: "phylaram-map-1".to_string(),
+        producer_version: "0.1.0-alpha".to_string(),
+        schema: "phylaram-map-2".to_string(),
         status: "incomplete".to_string(),
         logical_size: 1024 * 1024,
         physical_bytes: 1024 * 1024,
@@ -85,6 +87,8 @@ fn test_e2e_incomplete_unreadable_verification() {
         topology_changed: false,
         sha256: hash_hex,
         kernel_hints: None,
+        wavelet_entropy: None,
+        compliance_standards: None,
         ranges: vec![RangeEntry {
             driver_run: 0,
             start: "0x0".to_string(),

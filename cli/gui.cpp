@@ -509,8 +509,14 @@ void PhylaMainWindow::StartAcquisitionWorker(bool isDryRunOnly)
             std::vector<MemoryRun> runs;
             device.Query(highestEnd, totalBytes, runs);
             device.QueryHints(hints_);
+
+            ReadResult rrSample;
+            phylaram::WaveletEntropyMetrics* pEntropy = new phylaram::WaveletEntropyMetrics();
+            if (!runs.empty() && device.Read(0, 0, 4096, rrSample) && rrSample.copied > 0) {
+                *pEntropy = phylaram::AnalyzeWaveletEntropy(rrSample.data.data(), rrSample.copied);
+            }
             StopAndDeleteDriver();
-            PostMessageW(hwnd_, WM_PHYLA_DRYRUN_DONE, 0, 0);
+            PostMessageW(hwnd_, WM_PHYLA_DRYRUN_DONE, 0, (LPARAM)pEntropy);
             return;
         }
 
@@ -893,13 +899,23 @@ LRESULT PhylaMainWindow::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 
     case WM_PHYLA_DRYRUN_DONE: {
         SetState(GuiState::Ready);
+        phylaram::WaveletEntropyMetrics* pEnt = reinterpret_cast<phylaram::WaveletEntropyMetrics*>(lParam);
         std::wostringstream ss;
-        ss << L"Dry-Run Telemetry Discovery Completed:\n\n"
+        ss << L"PhylaRAM Dry-Run Telemetry & Wavelet Triage Completed:\n\n"
            << L"• System DTB (CR3) : 0x" << std::hex << std::uppercase << hints_.directoryTableBase << std::dec << L"\n"
            << L"• Executing KPCR   : 0x" << std::hex << std::uppercase << hints_.kpcrAddress << std::dec << L"\n"
            << L"• NTOSKRNL Base    : 0x" << std::hex << std::uppercase << hints_.kernelBase << std::dec << L"\n"
            << L"• Windows Build    : " << hints_.buildNumber << L"\n"
            << L"• Hypervisor       : " << (hints_.hypervisorPresent ? L"Present" : L"None") << L"\n";
+        if (pEnt && pEnt->totalBytesAnalyzed > 0) {
+            ss << L"\n[Wavelet Transition Triage]\n"
+               << L"• Identity Density : " << std::fixed << std::setprecision(1) << (pEnt->identityDensity * 100.0f) << L"%\n"
+               << L"• Transition Energy: " << std::fixed << std::setprecision(3) << pEnt->transitionEnergy << L"\n"
+               << L"• Predictability   : " << std::fixed << std::setprecision(1) << (pEnt->predictionConfidence * 100.0f) << L"%\n"
+               << L"• SGH5 Orbit Hash  : 0x" << std::hex << std::uppercase << pEnt->orbitHash << std::dec << L"\n"
+               << L"• Classification   : " << std::wstring(pEnt->categoryName.begin(), pEnt->categoryName.end()) << L"\n";
+        }
+        if (pEnt) delete pEnt;
         MessageBoxW(hwnd_, ss.str().c_str(), L"PhylaRAM Dry-Run Telemetry", MB_OK | MB_ICONINFORMATION);
         return 0;
     }

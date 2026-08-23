@@ -26,6 +26,7 @@ jobs:
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_wavelet_classifier.cpp -o /tmp/test_wavelet && /tmp/test_wavelet
 
       - name: Rust Tests & Clippy
         working-directory: tools/phylaram-verify

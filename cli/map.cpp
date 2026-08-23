@@ -98,6 +98,33 @@ bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& s)
         f << "  },\n";
     }
 
+    if (s.entropy.totalBytesAnalyzed > 0) {
+        f << "  \"wavelet_entropy\": {\n";
+        f << "    \"identity_density\": " << s.entropy.identityDensity << ",\n";
+        f << "    \"transition_energy\": " << s.entropy.transitionEnergy << ",\n";
+        f << "    \"bigram_entropy\": " << s.entropy.bigramEntropy << ",\n";
+        f << "    \"prediction_confidence\": " << s.entropy.predictionConfidence << ",\n";
+        f << "    \"orbit_hash\": \"" << Hex64(s.entropy.orbitHash) << "\",\n";
+        f << "    \"category\": \"" << s.entropy.categoryName << "\"\n";
+        f << "  },\n";
+    }
+
+    f << "  \"compliance_standards\": {\n";
+    f << "    \"frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"],\n";
+    f << "    \"mappings\": [\n";
+    for (size_t i = 0; i < phylaram::GetComplianceRegistryCount(); ++i) {
+        const auto& c = phylaram::COMPLIANCE_REGISTRY[i];
+        f << "      {\"capability\": \"" << c.capabilityKey
+          << "\", \"description\": \"" << c.description
+          << "\", \"mitre_attack\": \"" << c.mitreAttack
+          << "\", \"nist_sp_800_53\": \"" << c.nistSp80053
+          << "\", \"nist_csf\": \"" << c.nistCsf << "\"}";
+        if (i + 1 != phylaram::GetComplianceRegistryCount()) f << ',';
+        f << "\n";
+    }
+    f << "    ]\n";
+    f << "  },\n";
+
     f << "  \"ranges\": [\n";
     for (size_t i = 0; i < s.ranges.size(); ++i) {
         const auto& r = s.ranges[i];

@@ -65,6 +65,8 @@ bool Acquire(IDeviceSession& device,
     auto transferStartTime = std::chrono::steady_clock::now();
     uint64_t bytesTransferredSinceStart = 0;
     int64_t lastProgressMs = 0;
+    std::vector<uint8_t> entropySample;
+    entropySample.reserve(65536);
 
     for (const auto& run : runs) {
         if (cancelled.load()) {
@@ -89,6 +91,10 @@ bool Acquire(IDeviceSession& device,
             }
 
             if (rr.copied > 0) {
+                if (entropySample.size() < 65536 && !rr.data.empty()) {
+                    size_t toTake = std::min<size_t>(65536 - entropySample.size(), static_cast<size_t>(rr.copied));
+                    entropySample.insert(entropySample.end(), rr.data.begin(), rr.data.begin() + toTake);
+                }
                 if (!hashZerosTo(rr.physicalAddress)) {
                     return false;
                 }
@@ -221,6 +227,10 @@ bool Acquire(IDeviceSession& device,
     bool changed = false;
     if (!device.End(changed)) {
         return false;
+    }
+
+    if (!entropySample.empty()) {
+        summary.entropy = phylaram::AnalyzeWaveletEntropy(entropySample.data(), entropySample.size());
     }
 
     summary.topologyChanged = changed;

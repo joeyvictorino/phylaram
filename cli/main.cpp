@@ -210,20 +210,41 @@ int wmain(int argc, wchar_t** argv)
 
         if (dryRun) {
             device.QueryHints(summary.hints);
+
+            // Sample first readable page for live Wavelet Transition Entropy triage
+            ReadResult rrSample;
+            phylaram::WaveletEntropyMetrics entropy;
+            if (!runs.empty() && device.Read(0, 0, 4096, rrSample) && rrSample.copied > 0) {
+                entropy = phylaram::AnalyzeWaveletEntropy(rrSample.data.data(), rrSample.copied);
+            }
+
             if (jsonOutput) {
                 std::wcout << L"{\n"
                            << L"  \"dry_run\": true,\n"
                            << L"  \"logical_size\": " << highestEnd << L",\n"
                            << L"  \"physical_bytes\": " << totalBytes << L",\n"
-                           << L"  \"range_count\": " << runs.size() << L",\n"
-                           << L"  \"kernel_hints\": {\n"
+                           << L"  \"range_count\": " << runs.size() << L",\n";
+
+                if (entropy.totalBytesAnalyzed > 0) {
+                    std::wcout << L"  \"wavelet_entropy\": {\n"
+                               << L"    \"identity_density\": " << entropy.identityDensity << L",\n"
+                               << L"    \"transition_energy\": " << entropy.transitionEnergy << L",\n"
+                               << L"    \"bigram_entropy\": " << entropy.bigramEntropy << L",\n"
+                               << L"    \"prediction_confidence\": " << entropy.predictionConfidence << L",\n"
+                               << L"    \"orbit_hash\": \"0x" << std::hex << std::uppercase << entropy.orbitHash << std::dec << L"\",\n"
+                               << L"    \"category\": \"" << std::wstring(entropy.categoryName.begin(), entropy.categoryName.end()) << L"\"\n"
+                               << L"  },\n";
+                }
+
+                std::wcout << L"  \"kernel_hints\": {\n"
                            << L"    \"hypervisor_present\": " << (summary.hints.hypervisorPresent ? L"true" : L"false") << L",\n"
                            << L"    \"directory_table_base\": \"0x" << std::hex << std::uppercase << summary.hints.directoryTableBase << std::dec << L"\",\n"
                            << L"    \"kpcr_address\": \"0x" << std::hex << std::uppercase << summary.hints.kpcrAddress << std::dec << L"\",\n"
                            << L"    \"kernel_base\": \"0x" << std::hex << std::uppercase << summary.hints.kernelBase << std::dec << L"\",\n"
                            << L"    \"kernel_size\": " << summary.hints.kernelSize << L",\n"
                            << L"    \"build_number\": " << summary.hints.buildNumber << L"\n"
-                           << L"  }\n"
+                           << L"  },\n"
+                           << L"  \"compliance_frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"]\n"
                            << L"}\n";
             } else {
                 std::wcout << L"PhylaRAM 0.1.0-alpha — Dry-Run Topology & Kernel Hints\n\n"
@@ -237,6 +258,14 @@ int wmain(int argc, wchar_t** argv)
                                << L"Kernel Size     : " << summary.hints.kernelSize << L" bytes\n"
                                << L"Windows Build   : " << summary.hints.majorVersion << L"." << summary.hints.minorVersion << L"." << summary.hints.buildNumber << L"\n"
                                << L"Hypervisor      : " << (summary.hints.hypervisorPresent ? L"Present" : L"None") << L"\n";
+                }
+                if (entropy.totalBytesAnalyzed > 0) {
+                    std::wcout << L"\n[Wavelet Transition Triage]\n"
+                               << L"Identity Density: " << std::fixed << std::setprecision(2) << (entropy.identityDensity * 100.0f) << L"%\n"
+                               << L"Transition Energy: " << std::fixed << std::setprecision(3) << entropy.transitionEnergy << L"\n"
+                               << L"Predictability  : " << std::fixed << std::setprecision(2) << (entropy.predictionConfidence * 100.0f) << L"%\n"
+                               << L"SGH5 Orbit Hash : 0x" << std::hex << std::uppercase << entropy.orbitHash << std::dec << L"\n"
+                               << L"Classification  : " << std::wstring(entropy.categoryName.begin(), entropy.categoryName.end()) << L"\n";
                 }
                 std::wcout << L"\n[PASS] Dry-run completed successfully. Zero bytes written to disk.\n";
             }

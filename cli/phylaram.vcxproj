@@ -74,6 +74,8 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="..\shared\phylaram.h" />
     <ClInclude Include="..\shared\interfaces.hpp" />
+    <ClInclude Include="..\shared\compliance_map.hpp" />
+    <ClInclude Include="..\shared\wavelet_classifier.hpp" />
     <ResourceCompile Include="phylaram.rc" />
     <Manifest Include="phylaram.manifest" />
   </ItemGroup>

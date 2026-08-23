@@ -38,6 +38,9 @@ struct KernelHints {
     uint64_t kernelSize = 0;         // NTOSKRNL image size
 };
 
+#include "compliance_map.hpp"
+#include "wavelet_classifier.hpp"
+
 struct AcquisitionSummary {
     bool completed = false;
     bool topologyChanged = false;
@@ -47,6 +50,7 @@ struct AcquisitionSummary {
     uint64_t unreadableBytes = 0;
     std::string sha256;
     KernelHints hints;
+    phylaram::WaveletEntropyMetrics entropy;
     std::vector<MemoryRun> ranges;
     std::vector<UnreadableSpan> unreadable;
 };
