@@ -213,7 +213,7 @@ struct EvidenceCaptureResult {
 class DriverRuntime final {
 public:
     DriverRuntime() = default;
-    ~DriverRuntime() { Stop(); }
+    ~DriverRuntime() { (void)Stop(); }
 
     DriverRuntime(const DriverRuntime&) = delete;
     DriverRuntime& operator=(const DriverRuntime&) = delete;
@@ -221,7 +221,7 @@ public:
     DriverRuntime& operator=(DriverRuntime&&) = delete;
 
     bool Start(std::wstring& errorText);
-    void Stop() noexcept;
+    [[nodiscard]] DWORD Stop() noexcept;
 
 private:
     std::wstring extractedDriverPath_;
@@ -230,7 +230,7 @@ private:
 
 bool ExtractEmbeddedDriver(std::wstring& driverPathOut);
 bool InstallAndStartDriver(const std::wstring& sysPath, std::wstring& errorText);
-void StopAndDeleteDriver();
+[[nodiscard]] DWORD StopAndDeleteDriver() noexcept;
 
 bool IsSupportedWindows(std::wstring& reason);
 bool IsAdministrator();
