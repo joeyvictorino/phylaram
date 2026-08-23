@@ -1,73 +1,259 @@
-# PhylaRAM Acceptance Test Plan & Validation Gates
+# PhylaRAM Acceptance Test Plan and Validation Gates
 
-**Brand:** PhylaRAM  
-**Target:** Windows 10 version 2004+ / Windows 11 (x64)  
-**Standard:** `ENGINEERING_STANDARD.md`  
+**Target:** Windows 10 version 2004+ / Windows 11, x64  
+**Normative engineering rules:** [`../ENGINEERING_STANDARD.md`](../ENGINEERING_STANDARD.md)
 
----
-
-## 1. Local Portable Validation (macOS / Linux)
-
-These tests are executed locally before submitting changes or running Windows validation gates:
-
-### Test Suite Summary
-- **Suite 1: Range Algebra (`test_range_algebra`)**
-  - Validates 64-bit integer overflow protection at `UINT64_MAX`.
-  - Rejects overlapping ranges, zero-length ranges, and backwards ranges.
-  - Tests massive scales: >64 runs, 4 GiB+, 64 GiB+, 128 GiB+, 256 GiB+.
-- **Suite 2: Mock Acquisition Engine (`test_mock_acquire`)**
-  - 16 MiB fast-path bulk transfer.
-  - 16 MiB + 1 byte run boundary crossing.
-  - Bad page isolation (4 KiB) and resumption of 16 MiB fast path.
-  - Contiguous bad page span coalescing.
-  - Real acquired all-zero page accounting vs unreadable span accounting.
-  - Dynamic memory topology mutation detection at session end.
-  - Ctrl+C cancellation handling with clean `.partial` state.
-- **Suite 3: Provenance Map Schema (`test_map_json`)**
-  - Schema `phylaram-map-1` compliance.
-  - Correct uppercase hex address formatting (`0x...`).
-  - Terminal status consistency (`complete` vs `incomplete` vs `failed`).
-- **Suite 4: CLI Parser (`test_cli_parser`)**
-  - Flag parsing (`--quiet`, `--no-hash`, `--help`, `-h`).
-  - Strict rejection of unknown flags and multiple output targets.
-- **Suite 5: Rust Offline Verifier (`phylaram-verify`)**
-  - Independent parsing, schema validation, logical SHA-256 calculation.
-  - `proptest` property-based invariant testing.
+A test plan is not evidence that a test ran. Each release gate closes only after execution evidence is recorded for the release candidate.
 
 ---
 
-## 2. Windows Acceptance Validation Gates
+## 1. Portable Automated Validation
 
-The following 6 gates MUST be executed on dedicated Windows 10/11 x64 physical and virtual machines prior to public release:
+CI runs the following portable checks where configured.
 
-### Gate 1: Strict Toolchain Build
-- **Target:** Visual Studio 2022 + WDK (10.0.22621+).
-- **Driver Flags:** C17 standard, `/W4`, `/WX`, `/guard:cf`, `/Qspectre`, `EnableInf2cat=false`.
-- **CLI Flags:** C++20 standard, `/W4`, `/WX`, `/guard:cf`, `/CETCompat`, `/permissive-`.
-- **Pass Criteria:** Zero warnings, zero errors in Release|x64 build producing `bin\phylaram.sys` and `bin\phylaram.exe`.
+### Range algebra
 
-### Gate 2: Static Driver Analysis
-- **Tools:** Static Driver Verifier (SDV) & CodeQL Driver Suite.
-- **Pass Criteria:** All KMDF rules pass (including `ControlDeviceDeletedOnFailedInit`, `MdlZeroLengthCheck`, `IrqlPassive`, `PagedCode`).
+Proves model-level behavior for:
 
-### Gate 3: Dynamic Driver Verifier Stress Profile
-- **Environment:** Dedicated Windows test VM with Driver Verifier active.
-- **Verifier Flags:** Special Pool, Force IRQL Checking, Pool Tracking, I/O Verification, Deadlock Detection, Security Checks, Miscellaneous Checks.
-- **Pass Criteria:** 100 consecutive acquisition cycles (`phylaram.exe test.raw`) with zero bugchecks, zero pool leaks, and zero IRQL violations.
+- checked 64-bit address arithmetic;
+- zero-length and overlapping ranges;
+- large physical-address/topology cases.
 
-### Gate 4: Hardware & RAM Topology Matrix
-- **Topologies:**
-  - 4 GB RAM (single NUMA node).
-  - 16 GB RAM (dual-channel).
-  - 64 GB RAM (large PCIe MMIO / ReBAR holes).
-  - 128 GB+ RAM (multi-socket / enterprise workstation).
-- **Filesystems:** NTFS (sparse), ReFS (sparse), FAT32 (non-sparse, verifies 4GB rejection), exFAT (dense fallback).
-- **Pass Criteria:** `file offset == physical address` maintained; sparse file allocation matches `physical_bytes`.
+### Mock acquisition
 
-### Gate 5: Windows Security Controls Gate
-- **Controls:** Secure Boot enabled, Virtualization-Based Security (VBS) enabled, Hypervisor-Protected Code Integrity (HVCI / Memory Integrity) enabled, Windows Defender Real-Time Protection active.
-- **Pass Criteria:** Driver loads and executes cleanly without requiring any security degradation or test-signing.
+Proves model-level behavior for:
 
-### Gate 6: Forensic Tool Interoperability
-- **Tools:** Volatility 3 (`windows.info`, `windows.pslist`, `windows.malfind`), MemProcFS.
-- **Pass Criteria:** Acquired `memory.raw` images parse cleanly with zero symbol resolution errors or physical alignment discrepancies.
+- bounded bulk reads;
+- partial transfer preservation;
+- page-granular unreadable isolation;
+- continuation after unreadable pages;
+- zero-valued acquired data remaining distinct from unreadable data;
+- topology-change terminal state;
+- cancellation behavior.
+
+### Provenance-map contract
+
+Proves model-level serialization expectations for:
+
+- `phylaram-map-2`;
+- complete vs incomplete terminal status;
+- physical addresses and NTSTATUS formatting;
+- optional kernel hints;
+- exclusion of analytic/compliance interpretation from canonical provenance.
+
+### CLI contract
+
+Proves parser-model behavior for:
+
+- ordinary capture;
+- strict non-negative `--rate-limit` parsing;
+- low limits such as 1 MiB/s remaining valid;
+- overflow and malformed rate rejection;
+- `--dry-run` and `--json` mode restrictions;
+- unknown option rejection;
+- rejection of raw stdout (`-`);
+- rejection of legacy `--no-hash` and `--throttle` aliases;
+- one-output-path rule;
+- GUI/help mode exclusivity.
+
+### Rust offline verifier
+
+CI requires:
+
+```bash
+cargo fmt --check
+cargo clippy -- -D warnings
+cargo test --verbose
+```
+
+Verifier tests must cover malformed and adversarial relationships including:
+
+- range overlap and arithmetic overflow;
+- invalid driver-run domains;
+- unreadable span overlap;
+- unreadable spans outside physical RAM;
+- unreadable sum/accounting mismatch;
+- non-zero RAW bytes falsely described as unreadable;
+- invalid terminal state;
+- invalid hash encoding and hash mismatch.
+
+---
+
+## 2. Windows Build Gate
+
+**Environment:** configured Visual Studio 2022 / MSVC v143 and WDK toolchain.
+
+### Driver
+
+- C17;
+- x64;
+- `/W4` and `/WX`;
+- Control Flow Guard and configured Spectre mitigations;
+- zero first-party warnings.
+
+### User mode
+
+- C++20;
+- x64;
+- `/W4` and `/WX`;
+- conformance mode;
+- SDL checks;
+- CFG, DEP, ASLR, CET where configured;
+- zero first-party warnings.
+
+### Rust
+
+- release build of `phylaram-verify`.
+
+The gate passes only when all required binaries are produced from the exact release commit and every required build command succeeds.
+
+---
+
+## 3. Evidence-Transaction Regression Gate
+
+Windows integration tests SHOULD exercise the real user-mode transaction against a controlled/mocked device seam or dedicated test VM and prove:
+
+1. writer preflight occurs before acquisition writes;
+2. SHA-256 is mandatory;
+3. `END_SESSION` occurs exactly once;
+4. topology change is not overwritten by presentation code;
+5. RAW flush failure produces failure, not a success UI/message;
+6. map write failure produces failure;
+7. SHA sidecar write failure produces failure;
+8. map/hash promotion failure produces failure and cleanup;
+9. RAW promotion failure produces failure and removes already-promoted sidecars when possible;
+10. destination collision refuses overwrite;
+11. cancellation publishes no successful final bundle;
+12. GUI and CLI consume the same `CaptureEvidenceToFile` result semantics.
+
+This is a required regression area for the defects that motivated the remediation branch.
+
+---
+
+## 4. Rate-Limit Regression Gate
+
+Rate limiting must be tested with transfer sizes for which the required pacing delay exceeds five seconds.
+
+At minimum:
+
+- 16 MiB transferred under a 1 MiB/s limit must require approximately 16 seconds of target elapsed time, subject to scheduler tolerance;
+- long waits must be split into cancellation-responsive sleeps rather than discarded;
+- cancellation during a pacing wait must terminate without final publication;
+- malformed/negative/overflowing CLI limits must be rejected.
+
+A parser test alone does not prove the pacing implementation.
+
+---
+
+## 5. Static Driver Analysis Gate
+
+Use the strongest practical WDK/static checks for the release toolchain, including Static Driver Verifier where supported and CodeQL/other analysis where applicable.
+
+Review specifically for:
+
+- control-device initialization ownership;
+- IOCTL buffer/MDL validation;
+- integer arithmetic;
+- pageable-code/IRQL discipline;
+- file-context lifetime;
+- synchronization scope;
+- pool ownership and release;
+- output initialization.
+
+No finding is considered resolved merely because it was suppressed.
+
+---
+
+## 6. Driver Verifier Dynamic Gate
+
+**Environment:** dedicated Windows test VM or hardware, never the only copy of evidence.
+
+Enable applicable Driver Verifier checks including:
+
+- Special Pool;
+- Force IRQL Checking;
+- Pool Tracking;
+- I/O Verification;
+- Deadlock Detection;
+- Security Checks;
+- Miscellaneous Checks.
+
+Execute at least 100 repeated acquisition cycles under memory/I/O stress.
+
+Pass criteria:
+
+- zero bugchecks;
+- zero use-after-free indicators;
+- zero IRQL violations;
+- zero pool leaks/corruption attributable to `phylaram.sys`;
+- clean service/temporary-driver lifecycle after every cycle.
+
+This gate specifically validates the file-cleanup/IOCTL synchronization fix; code inspection alone does not close it.
+
+---
+
+## 7. Physical Memory and Filesystem Matrix
+
+Validate representative topologies including:
+
+- 4 GB;
+- 16 GB;
+- 64 GB with large PCIe MMIO/ReBAR holes;
+- 128 GB+ and NUMA/multi-node where available.
+
+Validate destination behavior on supported filesystems, especially NTFS and ReFS sparse files.
+
+For every case prove:
+
+- `file offset == physical address` for populated RAM;
+- logical size equals highest physical range end;
+- reported physical sum matches range geometry;
+- sparse holes correspond to unpopulated address space rather than silently omitted RAM;
+- final SHA matches independent hashing;
+- verifier accepts the finalized bundle;
+- incomplete conditions remain explicit.
+
+FAT/FAT32 oversized-file rejection may be tested as an unsupported destination case; it is not a recommended evidence destination.
+
+---
+
+## 8. Production Windows Security / Signing Gate
+
+Validate the final production-signed driver on supported Windows systems with:
+
+- Secure Boot enabled;
+- VBS enabled where applicable;
+- HVCI / Memory Integrity enabled;
+- normal Windows Defender security controls active.
+
+The project must select and document the exact Microsoft production signing/certification path. Attestation signing and WHCP/HLK certification are distinct paths and must not be conflated.
+
+Pass criteria require loading and acquiring without disabling production security controls.
+
+Test-signed alpha artifacts do not satisfy this gate.
+
+---
+
+## 9. Forensic Interoperability Gate
+
+Acquire real test images from supported Windows builds and validate with current supported versions of downstream tools.
+
+At minimum exercise representative Volatility 3 operations such as system information and process enumeration, and initialize/mount with MemProcFS where supported.
+
+Pass criteria include:
+
+- parsable physical layout;
+- no offset/alignment discrepancy attributable to PhylaRAM;
+- kernel hints do not create false confidence when absent or invalid;
+- unreadable provenance remains available to the examiner;
+- independent bundle verification passes before downstream analysis.
+
+Synthetic fixture tests help but do not substitute for this gate.
+
+---
+
+## 10. Release Rule
+
+A public production-readiness claim requires all applicable gates to be green for the exact release candidate.
+
+If a gate is unrun, blocked, or inconclusive, documentation must say so explicitly.
