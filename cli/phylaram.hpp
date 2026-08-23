@@ -150,6 +150,7 @@ public:
 
 private:
     ScopedHandle file_;
+    uint64_t logicalSize_ = 0;
     bool sparse_ = false;
     DWORD lastError_ = ERROR_SUCCESS;
 };
