@@ -17,6 +17,10 @@ NTSTATUS PhylaCopyRun(_In_ PPHYLA_FILE_CONTEXT Context,
         return STATUS_INVALID_PARAMETER;
     }
 
+    if (KeGetCurrentIrql() > APC_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+
     if (Context->Ranges == NULL || Context->SessionEnded) {
         return STATUS_INVALID_DEVICE_STATE;
     }

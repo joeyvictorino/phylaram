@@ -3,6 +3,8 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <iomanip>
+#include <sstream>
 
 static void AddUnreadable(AcquisitionSummary& summary, uint64_t start, uint64_t length, long status)
 {
@@ -62,6 +64,7 @@ bool Acquire(IDeviceSession& device,
     uint64_t lastPercent = UINT64_MAX;
     auto transferStartTime = std::chrono::steady_clock::now();
     uint64_t bytesTransferredSinceStart = 0;
+    int64_t lastProgressMs = 0;
 
     for (const auto& run : runs) {
         if (cancelled.load()) {
@@ -171,16 +174,38 @@ bool Acquire(IDeviceSession& device,
 
             if (!config.quiet && summary.physicalBytes != 0) {
                 uint64_t percent = (processedPhysical * 100) / summary.physicalBytes;
-                if (percent != lastPercent) {
-                    std::wcout << L"\rAcquiring... " << percent << L"%" << std::flush;
+                auto now = std::chrono::steady_clock::now();
+                auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - transferStartTime).count();
+                if (percent != lastPercent || elapsedMs - lastProgressMs >= 250) {
+                    lastProgressMs = elapsedMs;
                     lastPercent = percent;
+                    double speedMBs = (elapsedMs > 0) ? (static_cast<double>(bytesTransferredSinceStart) / (1024.0 * 1024.0)) / (static_cast<double>(elapsedMs) / 1000.0) : 0.0;
+                    uint64_t remainingBytes = (summary.physicalBytes > processedPhysical) ? (summary.physicalBytes - processedPhysical) : 0;
+                    double etaSecs = (speedMBs > 0.0) ? (static_cast<double>(remainingBytes) / (1024.0 * 1024.0)) / speedMBs : 0.0;
+                    uint32_t etaM = static_cast<uint32_t>(etaSecs) / 60;
+                    uint32_t etaS = static_cast<uint32_t>(etaSecs) % 60;
+
+                    std::wostringstream ss;
+                    ss << L"\rAcquiring: " << std::setw(3) << percent << L"% ["
+                       << (processedPhysical / (1024ull * 1024ull)) << L" / " << (summary.physicalBytes / (1024ull * 1024ull)) << L" MiB] "
+                       << L"[" << std::fixed << std::setprecision(1) << speedMBs << L" MB/s] "
+                       << L"[ETA: " << std::setfill(L'0') << std::setw(2) << etaM << L":" << std::setw(2) << etaS << L"]   ";
+                    std::wcout << ss.str() << std::flush;
                 }
             }
         }
     }
 
     if (!config.quiet) {
-        std::wcout << L"\rAcquiring... 100%\n";
+        auto totalElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - transferStartTime).count();
+        double avgSpeedMBs = (totalElapsedMs > 0) ?
+            (static_cast<double>(bytesTransferredSinceStart) / (1024.0 * 1024.0)) / (static_cast<double>(totalElapsedMs) / 1000.0) : 0.0;
+        std::wostringstream ss;
+        ss << L"\rAcquiring: 100% [" << (summary.acquiredBytes / (1024ull * 1024ull)) << L" MiB] "
+           << L"[Avg: " << std::fixed << std::setprecision(1) << avgSpeedMBs << L" MB/s] "
+           << L"[Time: " << std::setprecision(2) << (static_cast<double>(totalElapsedMs) / 1000.0) << L"s]                \n";
+        std::wcout << ss.str();
     }
 
     if (!hashZerosTo(summary.logicalSize)) {

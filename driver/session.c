@@ -181,9 +181,11 @@ NTSTATUS PhylaQueryKernelHints(_Out_ PPHYLA_KERNEL_HINTS Hints)
     // attaching to PsInitialSystemProcess. This gives Volatility 3 and
     // MemProcFS the exact DTB they need to begin analysis without scanning.
     // KeStackAttachProcess/KeUnstackDetachProcess is safe at PASSIVE_LEVEL.
-    KeStackAttachProcess(PsInitialSystemProcess, &apcState);
-    Hints->DirectoryTableBase = (ULONGLONG)__readcr3();
-    KeUnstackDetachProcess(&apcState);
+    if (PsInitialSystemProcess != NULL) {
+        KeStackAttachProcess(PsInitialSystemProcess, &apcState);
+        Hints->DirectoryTableBase = (ULONGLONG)__readcr3();
+        KeUnstackDetachProcess(&apcState);
+    }
 
     // KPCR: This is the KPCR of whichever CPU we happen to be running on.
     // It is NOT guaranteed to be CPU 0. Downstream tools should treat this
