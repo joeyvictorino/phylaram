@@ -1,60 +1,109 @@
 #include "phylaram.hpp"
-#include <sstream>
+
+#include <algorithm>
+#include <cctype>
+#include <climits>
 #include <iomanip>
+#include <sstream>
 
-static std::string NarrowUtf8(const std::wstring& s)
+namespace {
+
+constexpr size_t kWriteChunkBytes = 1024u * 1024u;
+
+std::string NarrowUtf8(const std::wstring& value)
 {
-    if (s.empty()) {
+    if (value.empty() || value.size() > static_cast<size_t>(INT_MAX)) {
         return {};
     }
-    int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr);
-    if (n <= 0) {
+
+    const int sourceCharacters = static_cast<int>(value.size());
+    const int outputBytes = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        value.data(),
+        sourceCharacters,
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+    if (outputBytes <= 0) {
         return {};
     }
-    std::string out(n, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), n, nullptr, nullptr);
-    return out;
+
+    std::string output(static_cast<size_t>(outputBytes), '\0');
+    const int converted = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        value.data(),
+        sourceCharacters,
+        output.data(),
+        outputBytes,
+        nullptr,
+        nullptr);
+    if (converted != outputBytes) {
+        return {};
+    }
+    return output;
 }
 
-static std::string Hex64(uint64_t value)
+std::string Hex64(uint64_t value)
 {
-    std::ostringstream ss;
-    ss << "0x" << std::hex << std::uppercase << value;
-    return ss.str();
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::uppercase << value;
+    return stream.str();
 }
 
-static std::string Hex32(uint32_t value)
+std::string Hex32(uint32_t value)
 {
-    std::ostringstream ss;
-    ss << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << value;
-    return ss.str();
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::uppercase
+           << std::setw(8) << std::setfill('0') << value;
+    return stream.str();
 }
 
-static bool WriteAtomicString(const std::wstring& targetPath, const std::string& content)
+bool IsSha256Hex(const std::string& value)
 {
-    ScopedHandle file(CreateFileW(targetPath.c_str(),
-                                  GENERIC_WRITE,
-                                  0,
-                                  nullptr,
-                                  CREATE_NEW,
-                                  FILE_ATTRIBUTE_NORMAL,
-                                  nullptr));
+    return value.size() == 64 &&
+           std::all_of(
+               value.begin(),
+               value.end(),
+               [](unsigned char character) {
+                   return std::isxdigit(character) != 0;
+               });
+}
+
+bool WriteAtomicString(const std::wstring& targetPath,
+                       const std::string& content)
+{
+    ScopedHandle file(CreateFileW(
+        targetPath.c_str(),
+        GENERIC_WRITE,
+        0,
+        nullptr,
+        CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr));
     if (!file) {
         return false;
     }
 
-    DWORD total = static_cast<DWORD>(content.size());
-    const char* ptr = content.data();
-
-    while (total > 0) {
+    size_t offset = 0;
+    while (offset < content.size()) {
+        const DWORD requested = static_cast<DWORD>(
+            std::min(content.size() - offset, kWriteChunkBytes));
         DWORD written = 0;
-        if (!WriteFile(file.Get(), ptr, total, &written, nullptr) || written == 0) {
+        if (!WriteFile(
+                file.Get(),
+                content.data() + offset,
+                requested,
+                &written,
+                nullptr) ||
+            written == 0) {
             file.Reset();
             DeleteFileW(targetPath.c_str());
             return false;
         }
-        ptr += written;
-        total -= written;
+        offset += written;
     }
 
     if (!FlushFileBuffers(file.Get())) {
@@ -66,99 +115,113 @@ static bool WriteAtomicString(const std::wstring& targetPath, const std::string&
     return true;
 }
 
-bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& s)
+} // namespace
+
+bool WriteMapJson(const std::wstring& path, const AcquisitionSummary& summary)
 {
-    std::ostringstream f;
-    const char* status = s.completed ?
-        ((s.unreadableBytes != 0 || s.topologyChanged) ? "incomplete" : "complete") : "failed";
-
-    f << "{\n";
-    f << "  \"producer\": \"PhylaRAM\",\n";
-    f << "  \"producer_version\": \"0.1.0-alpha\",\n";
-    f << "  \"schema\": \"phylaram-map-2\",\n";
-    f << "  \"status\": \"" << status << "\",\n";
-    f << "  \"logical_size\": " << s.logicalSize << ",\n";
-    f << "  \"physical_bytes\": " << s.physicalBytes << ",\n";
-    f << "  \"acquired_bytes\": " << s.acquiredBytes << ",\n";
-    f << "  \"unreadable_bytes\": " << s.unreadableBytes << ",\n";
-    f << "  \"topology_changed\": " << (s.topologyChanged ? "true" : "false") << ",\n";
-    f << "  \"sha256\": \"" << s.sha256 << "\",\n";
-
-    if (s.hints.available) {
-        f << "  \"kernel_hints\": {\n";
-        f << "    \"hypervisor_present\": " << (s.hints.hypervisorPresent ? "true" : "false") << ",\n";
-        f << "    \"directory_table_base\": \"" << Hex64(s.hints.directoryTableBase) << "\",\n";
-        f << "    \"kpcr_address\": \"" << Hex64(s.hints.kpcrAddress) << "\",\n";
-        f << "    \"kernel_base\": \"" << Hex64(s.hints.kernelBase) << "\",\n";
-        f << "    \"kernel_size\": " << s.hints.kernelSize << ",\n";
-        f << "    \"major_version\": " << s.hints.majorVersion << ",\n";
-        f << "    \"minor_version\": " << s.hints.minorVersion << ",\n";
-        f << "    \"build_number\": " << s.hints.buildNumber << ",\n";
-        f << "    \"processors\": " << s.hints.numberOfProcessors << "\n";
-        f << "  },\n";
+    if (!summary.completed ||
+        !IsSha256Hex(summary.sha256) ||
+        summary.ranges.empty() ||
+        summary.acquiredBytes > UINT64_MAX - summary.unreadableBytes ||
+        summary.acquiredBytes + summary.unreadableBytes != summary.physicalBytes) {
+        return false;
     }
 
-    if (s.entropy.totalBytesAnalyzed > 0) {
-        f << "  \"wavelet_entropy\": {\n";
-        f << "    \"identity_density\": " << s.entropy.identityDensity << ",\n";
-        f << "    \"transition_energy\": " << s.entropy.transitionEnergy << ",\n";
-        f << "    \"bigram_entropy\": " << s.entropy.bigramEntropy << ",\n";
-        f << "    \"prediction_confidence\": " << s.entropy.predictionConfidence << ",\n";
-        f << "    \"orbit_hash\": \"" << Hex64(s.entropy.orbitHash) << "\",\n";
-        f << "    \"category\": \"" << s.entropy.categoryName << "\"\n";
-        f << "  },\n";
+    const char* const status =
+        summary.unreadableBytes != 0 || summary.topologyChanged
+            ? "incomplete"
+            : "complete";
+
+    std::ostringstream output;
+    output << "{\n";
+    output << "  \"producer\": \"PhylaRAM\",\n";
+    output << "  \"producer_version\": \"0.1.0-alpha\",\n";
+    output << "  \"schema\": \"phylaram-map-2\",\n";
+    output << "  \"status\": \"" << status << "\",\n";
+    output << "  \"logical_size\": " << summary.logicalSize << ",\n";
+    output << "  \"physical_bytes\": " << summary.physicalBytes << ",\n";
+    output << "  \"acquired_bytes\": " << summary.acquiredBytes << ",\n";
+    output << "  \"unreadable_bytes\": " << summary.unreadableBytes << ",\n";
+    output << "  \"topology_changed\": "
+           << (summary.topologyChanged ? "true" : "false") << ",\n";
+    output << "  \"sha256\": \"" << summary.sha256 << "\",\n";
+
+    if (summary.hints.available) {
+        output << "  \"kernel_hints\": {\n";
+        output << "    \"hypervisor_present\": "
+               << (summary.hints.hypervisorPresent ? "true" : "false")
+               << ",\n";
+        output << "    \"directory_table_base\": \""
+               << Hex64(summary.hints.directoryTableBase) << "\",\n";
+        output << "    \"kpcr_address\": \""
+               << Hex64(summary.hints.kpcrAddress) << "\",\n";
+        output << "    \"kernel_base\": \""
+               << Hex64(summary.hints.kernelBase) << "\",\n";
+        output << "    \"kernel_size\": " << summary.hints.kernelSize
+               << ",\n";
+        output << "    \"major_version\": " << summary.hints.majorVersion
+               << ",\n";
+        output << "    \"minor_version\": " << summary.hints.minorVersion
+               << ",\n";
+        output << "    \"build_number\": " << summary.hints.buildNumber
+               << ",\n";
+        output << "    \"processors\": "
+               << summary.hints.numberOfProcessors << "\n";
+        output << "  },\n";
     }
 
-    f << "  \"compliance_standards\": {\n";
-    f << "    \"frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"],\n";
-    f << "    \"mappings\": [\n";
-    for (size_t i = 0; i < phylaram::GetComplianceRegistryCount(); ++i) {
-        const auto& c = phylaram::COMPLIANCE_REGISTRY[i];
-        f << "      {\"capability\": \"" << c.capabilityKey
-          << "\", \"description\": \"" << c.description
-          << "\", \"mitre_attack\": \"" << c.mitreAttack
-          << "\", \"nist_sp_800_53\": \"" << c.nistSp80053
-          << "\", \"nist_csf\": \"" << c.nistCsf << "\"}";
-        if (i + 1 != phylaram::GetComplianceRegistryCount()) f << ',';
-        f << "\n";
+    output << "  \"ranges\": [\n";
+    for (size_t index = 0; index < summary.ranges.size(); ++index) {
+        const MemoryRun& range = summary.ranges[index];
+        output << "    {\"driver_run\": " << range.driverIndex
+               << ", \"start\": \"" << Hex64(range.base)
+               << "\", \"length\": " << range.length << "}";
+        if (index + 1 != summary.ranges.size()) {
+            output << ',';
+        }
+        output << "\n";
     }
-    f << "    ]\n";
-    f << "  },\n";
+    output << "  ],\n";
 
-    f << "  \"ranges\": [\n";
-    for (size_t i = 0; i < s.ranges.size(); ++i) {
-        const auto& r = s.ranges[i];
-        f << "    {\"driver_run\": " << r.driverIndex
-          << ", \"start\": \"" << Hex64(r.base)
-          << "\", \"length\": " << r.length << "}";
-        if (i + 1 != s.ranges.size()) f << ',';
-        f << "\n";
+    output << "  \"unreadable\": [\n";
+    for (size_t index = 0; index < summary.unreadable.size(); ++index) {
+        const UnreadableSpan& span = summary.unreadable[index];
+        output << "    {\"start\": \"" << Hex64(span.start)
+               << "\", \"length\": " << span.length
+               << ", \"ntstatus\": \""
+               << Hex32(static_cast<uint32_t>(span.status)) << "\"}";
+        if (index + 1 != summary.unreadable.size()) {
+            output << ',';
+        }
+        output << "\n";
     }
-    f << "  ],\n";
+    output << "  ]\n";
+    output << "}\n";
 
-    f << "  \"unreadable\": [\n";
-    for (size_t i = 0; i < s.unreadable.size(); ++i) {
-        const auto& u = s.unreadable[i];
-        f << "    {\"start\": \"" << Hex64(u.start)
-          << "\", \"length\": " << u.length
-          << ", \"ntstatus\": \"" << Hex32(static_cast<uint32_t>(u.status)) << "\"}";
-        if (i + 1 != s.unreadable.size()) f << ',';
-        f << "\n";
-    }
-    f << "  ]\n";
-    f << "}\n";
-
-    return WriteAtomicString(path, f.str());
+    return WriteAtomicString(path, output.str());
 }
 
-bool WriteSha256Sidecar(const std::wstring& path, const std::wstring& rawFileName, const std::string& sha256)
+bool WriteSha256Sidecar(const std::wstring& path,
+                        const std::wstring& rawFileName,
+                        const std::string& sha256)
 {
-    std::string content = sha256 + "  " + NarrowUtf8(rawFileName) + "\n";
-    return WriteAtomicString(path, content);
+    if (!IsSha256Hex(sha256)) {
+        return false;
+    }
+
+    const std::string fileName = NarrowUtf8(rawFileName);
+    if (fileName.empty()) {
+        return false;
+    }
+
+    return WriteAtomicString(path, sha256 + "  " + fileName + "\n");
 }
 
-bool PromoteStagingFile(const std::wstring& stagingPath, const std::wstring& finalPath)
+bool PromoteStagingFile(const std::wstring& stagingPath,
+                        const std::wstring& finalPath)
 {
-    // Move without MOVEFILE_REPLACE_EXISTING ensuring atomic promotion that fails if destination exists
-    return MoveFileExW(stagingPath.c_str(), finalPath.c_str(), MOVEFILE_WRITE_THROUGH) != FALSE;
+    return MoveFileExW(
+               stagingPath.c_str(),
+               finalPath.c_str(),
+               MOVEFILE_WRITE_THROUGH) != FALSE;
 }
