@@ -47,6 +47,16 @@ static NTSTATUS PhylaCreateControlDevice(_In_ WDFDRIVER Driver)
     WDF_OBJECT_ATTRIBUTES_INIT(&deviceAttributes);
     deviceAttributes.ExecutionLevel = WdfExecutionLevelPassive;
 
+    /*
+     * SAFETY: EvtFileCleanup is allowed to run while requests still exist for
+     * the file object.  The file context owns the immutable physical-range
+     * snapshot consumed by READ_RUN.  Device-level synchronization therefore
+     * serializes queue callbacks with file cleanup so cleanup cannot free the
+     * snapshot while an IOCTL is reading it.  All participating callbacks are
+     * constrained to PASSIVE_LEVEL.
+     */
+    deviceAttributes.SynchronizationScope = WdfSynchronizationScopeDevice;
+
     status = WdfDeviceCreate(&init, &deviceAttributes, &device);
     if (!NT_SUCCESS(status)) {
         if (init != NULL) {
@@ -121,14 +131,18 @@ VOID PhylaEvtFileCreate(_In_ WDFDEVICE Device, _In_ WDFREQUEST Request, _In_ WDF
 VOID PhylaEvtFileCleanup(_In_ WDFFILEOBJECT FileObject)
 {
     PPHYLA_FILE_CONTEXT ctx = PhylaGetFileContext(FileObject);
+
     PAGED_CODE();
     PhylaSessionRelease(ctx);
 }
 
 VOID PhylaEvtFileClose(_In_ WDFFILEOBJECT FileObject)
 {
-    // Cleanup already called PhylaSessionRelease via EvtFileCleanup.
-    // EvtFileClose is a no-op — it exists only as a safety net and
-    // PhylaSessionRelease is idempotent (InterlockedExchangePointer).
+    PAGED_CODE();
+
+    /*
+     * EvtFileCleanup owns early session release.  Close intentionally performs
+     * no second lifecycle transition; the context is already terminal here.
+     */
     UNREFERENCED_PARAMETER(FileObject);
 }
