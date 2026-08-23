@@ -1,155 +1,194 @@
 #include <cassert>
+#include <cstdint>
+#include <cwctype>
+#include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
-#include <iostream>
+
+enum class Command {
+    Capture,
+    DryRun,
+    Gui,
+    Help,
+};
 
 struct CliOptions {
+    Command command = Command::Capture;
     std::wstring output;
     bool quiet = false;
-    bool hashEnabled = true;
-    bool dryRun = false;
-    bool jsonOutput = false;
-    bool guiMode = false;
+    bool json = false;
     uint32_t rateLimitMBps = 0;
-    bool showHelp = false;
     bool valid = false;
 };
 
-CliOptions ParseArgs(const std::vector<std::wstring>& args) {
-    CliOptions opt;
-    if (args.empty()) {
-        opt.valid = true;
-        opt.guiMode = true;
-        return opt;
+bool ParseUint32(const std::wstring& text, uint32_t& value)
+{
+    if (text.empty()) {
+        return false;
     }
 
-    for (size_t i = 0; i < args.size(); ++i) {
-        const auto& arg = args[i];
-        if (arg == L"--gui") {
-            opt.guiMode = true;
-            opt.valid = true;
-            return opt;
-        } else if (arg == L"--quiet") {
-            opt.quiet = true;
-        } else if (arg == L"--no-hash") {
-            opt.hashEnabled = false;
-        } else if (arg == L"--dry-run") {
-            opt.dryRun = true;
-        } else if (arg == L"--json") {
-            opt.jsonOutput = true;
-        } else if (arg == L"--rate-limit" || arg == L"--throttle") {
-            if (i + 1 < args.size()) {
-                opt.rateLimitMBps = static_cast<uint32_t>(std::stoi(args[++i]));
-            } else {
-                opt.valid = false;
-                return opt;
+    uint64_t parsed = 0;
+    for (const wchar_t character : text) {
+        if (std::iswdigit(character) == 0) {
+            return false;
+        }
+        const uint32_t digit = static_cast<uint32_t>(character - L'0');
+        if (parsed > (std::numeric_limits<uint32_t>::max() - digit) / 10) {
+            return false;
+        }
+        parsed = parsed * 10 + digit;
+    }
+
+    value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+CliOptions ParseArgs(const std::vector<std::wstring>& args)
+{
+    CliOptions options;
+    if (args.empty()) {
+        options.command = Command::Gui;
+        options.valid = true;
+        return options;
+    }
+
+    bool sawGui = false;
+    bool sawHelp = false;
+    bool sawDryRun = false;
+
+    for (size_t index = 0; index < args.size(); ++index) {
+        const std::wstring& argument = args[index];
+        if (argument == L"--gui") {
+            sawGui = true;
+        } else if (argument == L"--help" || argument == L"-h") {
+            sawHelp = true;
+        } else if (argument == L"--dry-run") {
+            sawDryRun = true;
+        } else if (argument == L"--quiet") {
+            options.quiet = true;
+        } else if (argument == L"--json") {
+            options.json = true;
+        } else if (argument == L"--rate-limit") {
+            if (index + 1 >= args.size() ||
+                !ParseUint32(args[++index], options.rateLimitMBps)) {
+                return options;
             }
-        } else if (arg == L"--help" || arg == L"-h") {
-            opt.showHelp = true;
-            opt.valid = true;
-            return opt;
-        } else if (!arg.empty() && arg[0] == L'-' && arg != L"-") {
-            opt.valid = false;
-            return opt;
-        } else if (opt.output.empty()) {
-            opt.output = arg;
+        } else if (!argument.empty() && argument.front() == L'-') {
+            return options;
+        } else if (options.output.empty()) {
+            options.output = argument;
         } else {
-            // Extra positional arg
-            opt.valid = false;
-            return opt;
+            return options;
         }
     }
 
-    opt.valid = opt.showHelp || opt.dryRun || opt.guiMode || !opt.output.empty();
-    return opt;
+    const unsigned modeCount = static_cast<unsigned>(sawGui) +
+                               static_cast<unsigned>(sawHelp) +
+                               static_cast<unsigned>(sawDryRun);
+    if (modeCount > 1) {
+        return options;
+    }
+
+    if (sawHelp) {
+        options.command = Command::Help;
+        options.valid = options.output.empty() && !options.json &&
+                        options.rateLimitMBps == 0 && !options.quiet;
+        return options;
+    }
+    if (sawGui) {
+        options.command = Command::Gui;
+        options.valid = options.output.empty() && !options.json &&
+                        options.rateLimitMBps == 0 && !options.quiet;
+        return options;
+    }
+    if (sawDryRun) {
+        options.command = Command::DryRun;
+        options.valid = options.output.empty() && options.rateLimitMBps == 0;
+        return options;
+    }
+
+    options.command = Command::Capture;
+    options.valid = !options.output.empty() &&
+                    options.output != L"-" &&
+                    !options.json;
+    return options;
 }
 
-int main() {
-    // 1. Standard valid invocation
+int main()
+{
     {
-        auto opt = ParseArgs({L"memory.raw"});
-        assert(opt.valid);
-        assert(opt.output == L"memory.raw");
-        assert(!opt.quiet);
-        assert(opt.hashEnabled);
-        assert(opt.rateLimitMBps == 0);
-        assert(!opt.showHelp);
-        assert(!opt.dryRun);
-        assert(!opt.jsonOutput);
+        const CliOptions options = ParseArgs({L"memory.raw"});
+        assert(options.valid);
+        assert(options.command == Command::Capture);
+        assert(options.output == L"memory.raw");
+        assert(options.rateLimitMBps == 0);
     }
 
-    // 2. Advanced flags: --quiet, --no-hash, --rate-limit
     {
-        auto opt = ParseArgs({L"C:\\Evidence\\image.raw", L"--quiet", L"--no-hash", L"--rate-limit", L"250"});
-        assert(opt.valid);
-        assert(opt.output == L"C:\\Evidence\\image.raw");
-        assert(opt.quiet);
-        assert(!opt.hashEnabled);
-        assert(opt.rateLimitMBps == 250);
+        const CliOptions options = ParseArgs(
+            {L"C:\\Evidence\\image.raw", L"--quiet", L"--rate-limit", L"250"});
+        assert(options.valid);
+        assert(options.quiet);
+        assert(options.rateLimitMBps == 250);
     }
 
-    // 3. Stdout streaming "-"
     {
-        auto opt = ParseArgs({L"-"});
-        assert(opt.valid);
-        assert(opt.output == L"-");
+        const CliOptions oneMiB = ParseArgs(
+            {L"memory.raw", L"--rate-limit", L"1"});
+        assert(oneMiB.valid);
+        assert(oneMiB.rateLimitMBps == 1);
     }
 
-    // 4. Help flags
     {
-        auto opt1 = ParseArgs({L"--help"});
-        assert(opt1.valid && opt1.showHelp);
-        auto opt2 = ParseArgs({L"-h"});
-        assert(opt2.valid && opt2.showHelp);
+        const CliOptions negative = ParseArgs(
+            {L"memory.raw", L"--rate-limit", L"-1"});
+        const CliOptions garbage = ParseArgs(
+            {L"memory.raw", L"--rate-limit", L"25MB"});
+        const CliOptions overflow = ParseArgs(
+            {L"memory.raw", L"--rate-limit", L"4294967296"});
+        assert(!negative.valid);
+        assert(!garbage.valid);
+        assert(!overflow.valid);
     }
 
-    // 5. Dry-run and JSON telemetry flags
     {
-        auto opt1 = ParseArgs({L"--dry-run"});
-        assert(opt1.valid);
-        assert(opt1.dryRun);
-        assert(!opt1.jsonOutput);
-
-        auto opt2 = ParseArgs({L"--dry-run", L"--json"});
-        assert(opt2.valid);
-        assert(opt2.dryRun);
-        assert(opt2.jsonOutput);
-
-        auto opt3 = ParseArgs({L"image.raw", L"--json"});
-        assert(opt3.valid);
-        assert(!opt3.dryRun);
-        assert(opt3.jsonOutput);
+        assert(!ParseArgs({L"-"}).valid);
+        assert(!ParseArgs({L"memory.raw", L"--no-hash"}).valid);
+        assert(!ParseArgs({L"memory.raw", L"--throttle", L"100"}).valid);
     }
 
-    // 6. Invalid flag rejection
     {
-        auto opt = ParseArgs({L"memory.raw", L"--compress"});
-        assert(!opt.valid);
+        const CliOptions help = ParseArgs({L"--help"});
+        const CliOptions shortHelp = ParseArgs({L"-h"});
+        assert(help.valid && help.command == Command::Help);
+        assert(shortHelp.valid && shortHelp.command == Command::Help);
     }
 
-    // 7. Missing rate-limit argument rejection
     {
-        auto opt = ParseArgs({L"memory.raw", L"--rate-limit"});
-        assert(!opt.valid);
+        const CliOptions dryRun = ParseArgs({L"--dry-run"});
+        const CliOptions dryRunJson = ParseArgs({L"--dry-run", L"--json"});
+        const CliOptions captureJson = ParseArgs({L"memory.raw", L"--json"});
+        assert(dryRun.valid && dryRun.command == Command::DryRun);
+        assert(dryRunJson.valid && dryRunJson.json);
+        assert(!captureJson.valid);
     }
 
-    // 8. Multiple positional files rejection
     {
-        auto opt = ParseArgs({L"memory.raw", L"extra.raw"});
-        assert(!opt.valid);
+        assert(!ParseArgs({L"memory.raw", L"--compress"}).valid);
+        assert(!ParseArgs({L"memory.raw", L"--rate-limit"}).valid);
+        assert(!ParseArgs({L"memory.raw", L"extra.raw"}).valid);
+        assert(!ParseArgs({L"--dry-run", L"memory.raw"}).valid);
+        assert(!ParseArgs({L"--gui", L"--dry-run"}).valid);
     }
 
-    // 9. GUI mode (no-args / double-click and --gui flag)
     {
-        auto optNoArgs = ParseArgs({});
-        assert(optNoArgs.valid);
-        assert(optNoArgs.guiMode);
-
-        auto optGui = ParseArgs({L"--gui"});
-        assert(optGui.valid);
-        assert(optGui.guiMode);
+        const CliOptions noArgs = ParseArgs({});
+        const CliOptions gui = ParseArgs({L"--gui"});
+        assert(noArgs.valid && noArgs.command == Command::Gui);
+        assert(gui.valid && gui.command == Command::Gui);
     }
 
-    std::cout << "[PASS] CLI parser validation tests passed successfully.\n";
+    std::cout << "[PASS] Strict CLI contract tests passed.\n";
     return 0;
 }
