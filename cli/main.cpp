@@ -1,396 +1,492 @@
 #include "phylaram.hpp"
-#include <iostream>
-#include <filesystem>
+
 #include <atomic>
+#include <cerrno>
+#include <cwctype>
+#include <iostream>
+#include <limits>
+#include <string>
+#include <vector>
 #include <winternl.h>
 
-static std::atomic_bool g_cancelled{false};
+namespace {
 
-static bool PathExists(const std::wstring& path)
-{
-    return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
-}
+std::atomic_bool gCancelled{false};
 
-static BOOL WINAPI ConsoleHandler(DWORD type)
+enum class Command {
+    Capture,
+    DryRun,
+    Gui,
+    Help,
+};
+
+struct CliOptions {
+    Command command = Command::Capture;
+    std::wstring outputPath;
+    bool quiet = false;
+    bool json = false;
+    uint32_t rateLimitMBps = 0;
+};
+
+BOOL WINAPI ConsoleHandler(DWORD eventType)
 {
-    if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
-        g_cancelled.store(true);
+    if (eventType == CTRL_C_EVENT ||
+        eventType == CTRL_BREAK_EVENT ||
+        eventType == CTRL_CLOSE_EVENT) {
+        gCancelled.store(true);
         return TRUE;
     }
     return FALSE;
 }
 
+void PrintUsage()
+{
+    std::wcout
+        << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
+        << L"Usage:\n"
+        << L"  phylaram.exe <output.raw> [options]\n"
+        << L"  phylaram.exe --dry-run [--json]\n"
+        << L"  phylaram.exe --gui\n\n"
+        << L"Options:\n"
+        << L"  --rate-limit <MiB/s>  Limit acquisition throughput; 0 means unlimited.\n"
+        << L"  --quiet               Suppress interactive acquisition progress.\n"
+        << L"  --dry-run             Inspect topology and kernel hints without creating evidence.\n"
+        << L"  --json                Emit dry-run output as JSON.\n"
+        << L"  --gui                 Launch the native graphical interface.\n"
+        << L"  --help, -h            Display this help.\n\n"
+        << L"A successful capture always creates RAW, map.json, and SHA-256 sidecars.\n"
+        << L"Raw stdout capture and hash-free evidence are intentionally unsupported.\n";
+}
+
+bool ParseUint32(const std::wstring& text, uint32_t& value)
+{
+    if (text.empty()) {
+        return false;
+    }
+    for (const wchar_t character : text) {
+        if (std::iswdigit(character) == 0) {
+            return false;
+        }
+    }
+
+    errno = 0;
+    wchar_t* end = nullptr;
+    const unsigned long long parsed = wcstoull(text.c_str(), &end, 10);
+    if (errno == ERANGE ||
+        end == text.c_str() ||
+        *end != L'\0' ||
+        parsed > std::numeric_limits<uint32_t>::max()) {
+        return false;
+    }
+
+    value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+bool ParseCommandLine(int argc,
+                      wchar_t** argv,
+                      CliOptions& options,
+                      std::wstring& error)
+{
+    bool sawGui = false;
+    bool sawHelp = false;
+    bool sawDryRun = false;
+
+    for (int index = 1; index < argc; ++index) {
+        const std::wstring argument = argv[index];
+
+        if (argument == L"--help" || argument == L"-h") {
+            sawHelp = true;
+            continue;
+        }
+        if (argument == L"--gui") {
+            sawGui = true;
+            continue;
+        }
+        if (argument == L"--dry-run") {
+            sawDryRun = true;
+            continue;
+        }
+        if (argument == L"--json") {
+            options.json = true;
+            continue;
+        }
+        if (argument == L"--quiet") {
+            options.quiet = true;
+            continue;
+        }
+        if (argument == L"--rate-limit") {
+            if (index + 1 >= argc) {
+                error = L"--rate-limit requires a non-negative integer MiB/s value.";
+                return false;
+            }
+            uint32_t parsedRate = 0;
+            if (!ParseUint32(argv[++index], parsedRate)) {
+                error = L"Invalid --rate-limit value.";
+                return false;
+            }
+            options.rateLimitMBps = parsedRate;
+            continue;
+        }
+        if (!argument.empty() && argument.front() == L'-') {
+            error = L"Unknown option: " + argument;
+            return false;
+        }
+        if (!options.outputPath.empty()) {
+            error = L"Only one evidence output path may be specified.";
+            return false;
+        }
+        options.outputPath = argument;
+    }
+
+    const unsigned modeCount = static_cast<unsigned>(sawGui) +
+                               static_cast<unsigned>(sawHelp) +
+                               static_cast<unsigned>(sawDryRun);
+    if (modeCount > 1) {
+        error = L"--gui, --help, and --dry-run are mutually exclusive modes.";
+        return false;
+    }
+
+    if (sawHelp) {
+        options.command = Command::Help;
+        return true;
+    }
+    if (sawGui) {
+        if (!options.outputPath.empty() ||
+            options.json ||
+            options.rateLimitMBps != 0 ||
+            options.quiet) {
+            error = L"--gui does not accept capture-mode options.";
+            return false;
+        }
+        options.command = Command::Gui;
+        return true;
+    }
+    if (sawDryRun) {
+        if (!options.outputPath.empty() || options.rateLimitMBps != 0) {
+            error = L"--dry-run does not accept an output path or rate limit.";
+            return false;
+        }
+        options.command = Command::DryRun;
+        return true;
+    }
+
+    if (options.json) {
+        error = L"--json is supported only with --dry-run.";
+        return false;
+    }
+    if (options.outputPath.empty()) {
+        error = L"An evidence output path is required.";
+        return false;
+    }
+    if (options.outputPath == L"-") {
+        error = L"Raw stdout acquisition is not supported because unreadable-byte provenance requires a companion map.";
+        return false;
+    }
+
+    options.command = Command::Capture;
+    return true;
+}
+
+void PrintDryRunJson(uint64_t highestPhysicalEnd,
+                     uint64_t totalPhysicalBytes,
+                     const std::vector<MemoryRun>& runs,
+                     const KernelHints& hints,
+                     bool topologyChanged)
+{
+    std::wcout << L"{\n"
+               << L"  \"dry_run\": true,\n"
+               << L"  \"logical_size\": " << highestPhysicalEnd << L",\n"
+               << L"  \"physical_bytes\": " << totalPhysicalBytes << L",\n"
+               << L"  \"range_count\": " << runs.size() << L",\n"
+               << L"  \"topology_changed\": "
+               << (topologyChanged ? L"true" : L"false") << L",\n"
+               << L"  \"kernel_hints_available\": "
+               << (hints.available ? L"true" : L"false");
+
+    if (hints.available) {
+        std::wcout << L",\n  \"kernel_hints\": {\n"
+                   << L"    \"hypervisor_present\": "
+                   << (hints.hypervisorPresent ? L"true" : L"false") << L",\n"
+                   << L"    \"directory_table_base\": \"0x" << std::hex
+                   << std::uppercase << hints.directoryTableBase << std::dec << L"\",\n"
+                   << L"    \"kpcr_address\": \"0x" << std::hex << std::uppercase
+                   << hints.kpcrAddress << std::dec << L"\",\n"
+                   << L"    \"kernel_base\": \"0x" << std::hex << std::uppercase
+                   << hints.kernelBase << std::dec << L"\",\n"
+                   << L"    \"kernel_size\": " << hints.kernelSize << L",\n"
+                   << L"    \"build_number\": " << hints.buildNumber << L"\n"
+                   << L"  }";
+    }
+
+    std::wcout << L"\n}\n";
+}
+
+void PrintDryRunText(uint64_t highestPhysicalEnd,
+                     uint64_t totalPhysicalBytes,
+                     const std::vector<MemoryRun>& runs,
+                     const KernelHints& hints,
+                     bool topologyChanged)
+{
+    std::wcout << L"PhylaRAM 0.1.0-alpha - Dry-run topology inspection\n\n"
+               << L"Physical RAM    : " << (totalPhysicalBytes / (1024ull * 1024ull))
+               << L" MiB (" << totalPhysicalBytes << L" bytes)\n"
+               << L"Highest address : 0x" << std::hex << std::uppercase
+               << highestPhysicalEnd << std::dec << L"\n"
+               << L"Memory ranges   : " << runs.size() << L"\n"
+               << L"Topology changed: " << (topologyChanged ? L"Yes" : L"No") << L"\n";
+
+    if (hints.available) {
+        std::wcout << L"System DTB      : 0x" << std::hex << std::uppercase
+                   << hints.directoryTableBase << std::dec << L"\n"
+                   << L"Executing KPCR  : 0x" << std::hex << std::uppercase
+                   << hints.kpcrAddress << std::dec << L"\n"
+                   << L"Kernel base     : 0x" << std::hex << std::uppercase
+                   << hints.kernelBase << std::dec << L"\n"
+                   << L"Windows build   : " << hints.buildNumber << L"\n";
+    }
+}
+
+int RunDryRun(bool json)
+{
+    std::wstring runtimeError;
+    DriverRuntime runtime;
+    if (!runtime.Start(runtimeError)) {
+        std::wcerr << runtimeError << L"\n";
+        return 1;
+    }
+
+    DeviceSession device;
+    if (!device.Open()) {
+        std::wcerr << L"Unable to open \\\\.\\PhylaRAM. Error "
+                   << device.LastError() << L"\n";
+        (void)runtime.Stop();
+        return 1;
+    }
+
+    uint64_t highestPhysicalEnd = 0;
+    uint64_t totalPhysicalBytes = 0;
+    std::vector<MemoryRun> runs;
+    KernelHints hints;
+    bool topologyChanged = false;
+
+    const bool queryOk = device.Query(
+        highestPhysicalEnd,
+        totalPhysicalBytes,
+        runs);
+    const bool hintsOk = device.QueryHints(hints);
+    const bool endOk = device.End(topologyChanged);
+
+    device.Close();
+    const DWORD cleanupError = runtime.Stop();
+
+    if (!queryOk || !endOk) {
+        std::wcerr << L"Dry-run topology inspection failed.\n";
+        return 1;
+    }
+    if (!hintsOk) {
+        hints = KernelHints{};
+    }
+    if (cleanupError != ERROR_SUCCESS) {
+        std::wcerr << L"Dry-run completed, but driver cleanup failed with error "
+                   << cleanupError << L".\n";
+        return 1;
+    }
+
+    if (json) {
+        PrintDryRunJson(
+            highestPhysicalEnd,
+            totalPhysicalBytes,
+            runs,
+            hints,
+            topologyChanged);
+    } else {
+        PrintDryRunText(
+            highestPhysicalEnd,
+            totalPhysicalBytes,
+            runs,
+            hints,
+            topologyChanged);
+    }
+
+    return topologyChanged ? 2 : 0;
+}
+
+int RunCapture(const CliOptions& options)
+{
+    std::wstring runtimeError;
+    DriverRuntime runtime;
+    if (!runtime.Start(runtimeError)) {
+        std::wcerr << runtimeError << L"\n";
+        return 1;
+    }
+
+    DeviceSession device;
+    if (!device.Open()) {
+        std::wcerr << L"Unable to open \\\\.\\PhylaRAM. Error "
+                   << device.LastError() << L"\n";
+        (void)runtime.Stop();
+        return 1;
+    }
+
+    AcquisitionConfig config;
+    config.quiet = options.quiet;
+    config.rateLimitMBps = options.rateLimitMBps;
+
+    gCancelled.store(false);
+    EvidenceCaptureResult result = CaptureEvidenceToFile(
+        device,
+        options.outputPath,
+        gCancelled,
+        config);
+
+    device.Close();
+    const DWORD cleanupError = runtime.Stop();
+
+    if (result.HasFinalizedBundle()) {
+        if (!options.quiet) {
+            std::wcout << L"Acquired bytes  : " << result.summary.acquiredBytes << L"\n"
+                       << L"Unreadable bytes: " << result.summary.unreadableBytes << L"\n"
+                       << L"Topology changed: "
+                       << (result.summary.topologyChanged ? L"Yes" : L"No") << L"\n"
+                       << L"SHA-256         : "
+                       << std::wstring(
+                              result.summary.sha256.begin(),
+                              result.summary.sha256.end())
+                       << L"\n";
+        }
+
+        if (cleanupError != ERROR_SUCCESS) {
+            std::wcerr << L"Evidence bundle was finalized, but driver cleanup failed with error "
+                       << cleanupError << L".\n";
+            return 1;
+        }
+
+        if (result.status == EvidenceCaptureStatus::Incomplete) {
+            std::wcout << L"INCOMPLETE: the evidence bundle is finalized, but unreadable memory or a topology change was recorded.\n";
+            return 2;
+        }
+
+        std::wcout << L"Complete. Run phylaram-verify for independent offline verification.\n";
+        return 0;
+    }
+
+    if (!result.error.empty()) {
+        std::wcerr << result.error;
+        if (result.systemError != ERROR_SUCCESS) {
+            std::wcerr << L" Error " << result.systemError << L".";
+        }
+        std::wcerr << L"\n";
+    }
+    if (cleanupError != ERROR_SUCCESS) {
+        std::wcerr << L"Driver cleanup also failed with error "
+                   << cleanupError << L".\n";
+    }
+    return 1;
+}
+
+} // namespace
+
 bool IsAdministrator()
 {
-    BOOL isMember = FALSE;
-    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
-    ScopedSid adminGroup;
+    SID_IDENTIFIER_AUTHORITY authority = SECURITY_NT_AUTHORITY;
     PSID rawSid = nullptr;
+    if (!AllocateAndInitializeSid(
+            &authority,
+            2,
+            SECURITY_BUILTIN_DOMAIN_RID,
+            DOMAIN_ALIAS_RID_ADMINS,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &rawSid)) {
+        return false;
+    }
 
-    if (AllocateAndInitializeSid(&ntAuthority, 2,
-                                 SECURITY_BUILTIN_DOMAIN_RID,
-                                 DOMAIN_ALIAS_RID_ADMINS,
-                                 0, 0, 0, 0, 0, 0,
-                                 &rawSid)) {
-        adminGroup.Reset(rawSid);
-        CheckTokenMembership(nullptr, adminGroup.Get(), &isMember);
+    ScopedSid administrators(rawSid);
+    BOOL isMember = FALSE;
+    if (!CheckTokenMembership(nullptr, administrators.Get(), &isMember)) {
+        return false;
     }
     return isMember != FALSE;
 }
 
 bool IsSupportedWindows(std::wstring& reason)
 {
-    using RtlGetVersionFn = LONG (WINAPI*)(PRTL_OSVERSIONINFOW);
+    using RtlGetVersionFunction = LONG(WINAPI*)(PRTL_OSVERSIONINFOW);
+
     HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    if (!ntdll) {
+    if (ntdll == nullptr) {
         reason = L"Unable to locate ntdll.dll.";
         return false;
     }
 
-    auto rtlGetVersion = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"));
-    if (!rtlGetVersion) {
-        reason = L"Unable to query Windows version.";
+    const auto rtlGetVersion = reinterpret_cast<RtlGetVersionFunction>(
+        GetProcAddress(ntdll, "RtlGetVersion"));
+    if (rtlGetVersion == nullptr) {
+        reason = L"Unable to resolve RtlGetVersion.";
         return false;
     }
 
-    RTL_OSVERSIONINFOW v{};
-    v.dwOSVersionInfoSize = sizeof(v);
-    if (rtlGetVersion(&v) != 0) {
-        reason = L"Unable to determine Windows version.";
+    RTL_OSVERSIONINFOW version{};
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (rtlGetVersion(&version) != 0) {
+        reason = L"Unable to determine the Windows version.";
         return false;
     }
 
-    if (v.dwMajorVersion < 10 || (v.dwMajorVersion == 10 && v.dwBuildNumber < 19041)) {
+    if (version.dwMajorVersion < 10 ||
+        (version.dwMajorVersion == 10 && version.dwBuildNumber < 19041)) {
         reason = L"PhylaRAM requires Windows 10 version 2004 (build 19041) or later, or Windows 11.";
         return false;
     }
-    return true;
-}
 
-static void Usage()
-{
-    std::wcout << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
-               << L"Usage:\n"
-               << L"  phylaram.exe [options]\n"
-               << L"  phylaram.exe <output.raw | -> [options]\n"
-               << L"  phylaram.exe --dry-run [--json]\n"
-               << L"  phylaram.exe --gui\n\n"
-               << L"Arguments:\n"
-               << L"  <output.raw>        Target raw image destination (supports UNC paths, e.g. \\\\server\\share\\mem.raw)\n"
-               << L"  -                   Stream raw physical memory directly to standard output (stdout)\n\n"
-               << L"Options:\n"
-               << L"  --gui               Launch the native Windows 11 Fluent Graphical User Interface\n"
-               << L"  --dry-run           Inspect physical memory topology and kernel hints without writing to disk\n"
-               << L"  --json              Output telemetry and forensic metadata in structured JSON\n"
-               << L"  --rate-limit <MB/s> Throttle acquisition throughput to avoid bus/disk contention (0 = unlimited)\n"
-               << L"  --no-hash           Disable inline cryptographic SHA-256 calculation\n"
-               << L"  --quiet             Suppress interactive console progress and speed/ETA telemetry\n"
-               << L"  --help, -h          Display this help message\n";
+    return true;
 }
 
 int wmain(int argc, wchar_t** argv)
 {
-    if (argc < 2) {
-        // Double-click / Interactive launch with no args -> Launch native Fluent GUI
+    if (argc == 1) {
         return LaunchGui(GetModuleHandleW(nullptr));
     }
 
-    bool quiet = false;
-    bool hashEnabled = true;
-    bool dryRun = false;
-    bool jsonOutput = false;
-    uint32_t rateLimitMBps = 0;
-    std::wstring output;
-
-    for (int i = 1; i < argc; ++i) {
-        std::wstring arg = argv[i];
-        if (arg == L"--gui") {
-            return LaunchGui(GetModuleHandleW(nullptr));
-        } else if (arg == L"--quiet") {
-            quiet = true;
-        } else if (arg == L"--no-hash") {
-            hashEnabled = false;
-        } else if (arg == L"--dry-run") {
-            dryRun = true;
-        } else if (arg == L"--json") {
-            jsonOutput = true;
-        } else if (arg == L"--rate-limit" || arg == L"--throttle") {
-            if (i + 1 < argc) {
-                rateLimitMBps = static_cast<uint32_t>(_wtoi(argv[++i]));
-            } else {
-                Usage();
-                return 1;
-            }
-        } else if (arg == L"--help" || arg == L"-h") {
-            Usage();
-            return 0;
-        } else if (!arg.empty() && arg[0] == L'-' && arg != L"-") {
-            Usage();
-            return 1;
-        } else if (output.empty()) {
-            output = arg;
-        } else {
-            Usage();
-            return 1;
-        }
-    }
-
-    if (output.empty() && !dryRun) {
-        Usage();
+    CliOptions options;
+    std::wstring parseError;
+    if (!ParseCommandLine(argc, argv, options, parseError)) {
+        std::wcerr << parseError << L"\n\n";
+        PrintUsage();
         return 1;
     }
 
-    bool isStdout = (output == L"-");
-    if (isStdout || jsonOutput) {
-        quiet = true; // Automatically suppress interactive text progress
+    if (options.command == Command::Help) {
+        PrintUsage();
+        return 0;
     }
-
-    // Preflight collision reservation for all 6 target and staging file paths
-    const std::wstring rawFinal = output;
-    const std::wstring rawPartial = isStdout ? L"-" : output + L".partial";
-    const std::wstring mapFinal = output + L".map.json";
-    const std::wstring mapPartial = output + L".map.json.partial";
-    const std::wstring hashFinal = output + L".sha256";
-    const std::wstring hashPartial = output + L".sha256.partial";
-
-    if (!isStdout && !dryRun) {
-        if (PathExists(rawFinal) || PathExists(rawPartial) ||
-            PathExists(mapFinal) || PathExists(mapPartial) ||
-            (hashEnabled && (PathExists(hashFinal) || PathExists(hashPartial)))) {
-            std::wcerr << L"Refusing to overwrite an existing output image or sidecar.\n";
-            return 1;
-        }
+    if (options.command == Command::Gui) {
+        return LaunchGui(GetModuleHandleW(nullptr));
     }
 
     if (!IsAdministrator()) {
-        std::wcerr << L"PhylaRAM must run elevated (Administrator privileges required).\n";
+        std::wcerr << L"PhylaRAM must run elevated as Administrator.\n";
         return 1;
     }
 
-    std::wstring reason;
-    if (!IsSupportedWindows(reason)) {
-        std::wcerr << reason << L"\n";
+    std::wstring unsupportedReason;
+    if (!IsSupportedWindows(unsupportedReason)) {
+        std::wcerr << unsupportedReason << L"\n";
         return 1;
     }
 
-    SetConsoleCtrlHandler(ConsoleHandler, TRUE);
-
-    std::wstring driverPath;
-    if (!ExtractEmbeddedDriver(driverPath)) {
-        std::wcerr << L"Failed to extract embedded driver.\n";
+    if (!SetConsoleCtrlHandler(ConsoleHandler, TRUE)) {
+        std::wcerr << L"Unable to install the cancellation handler.\n";
         return 1;
     }
 
-    std::wstring serviceError;
-    if (!InstallAndStartDriver(driverPath, serviceError)) {
-        std::wcerr << L"Failed to load driver: " << serviceError << L"\n";
-        DeleteFileW(driverPath.c_str());
-        return 1;
+    if (options.command == Command::DryRun) {
+        return RunDryRun(options.json);
     }
-
-    int exitCode = 1;
-    DeviceSession device;
-    RawWriter writer;
-    AcquisitionSummary summary;
-    AcquisitionConfig config{quiet, rateLimitMBps};
-
-    do {
-        if (!device.Open()) {
-            std::wcerr << L"Unable to open \\\\.\\PhylaRAM. Error " << device.LastError() << L"\n";
-            break;
-        }
-
-        uint64_t highestEnd = 0;
-        uint64_t totalBytes = 0;
-        std::vector<MemoryRun> runs;
-        if (!device.Query(highestEnd, totalBytes, runs)) {
-            std::wcerr << L"Unable to query memory layout. Error " << device.LastError() << L"\n";
-            break;
-        }
-
-        if (dryRun) {
-            device.QueryHints(summary.hints);
-
-            // Sample first readable page for live Wavelet Transition Entropy triage
-            ReadResult rrSample;
-            phylaram::WaveletEntropyMetrics entropy;
-            if (!runs.empty() && device.Read(0, 0, 4096, rrSample) && rrSample.copied > 0) {
-                entropy = phylaram::AnalyzeWaveletEntropy(rrSample.data.data(), rrSample.copied);
-            }
-
-            if (jsonOutput) {
-                std::wcout << L"{\n"
-                           << L"  \"dry_run\": true,\n"
-                           << L"  \"logical_size\": " << highestEnd << L",\n"
-                           << L"  \"physical_bytes\": " << totalBytes << L",\n"
-                           << L"  \"range_count\": " << runs.size() << L",\n";
-
-                if (entropy.totalBytesAnalyzed > 0) {
-                    std::wcout << L"  \"wavelet_entropy\": {\n"
-                               << L"    \"identity_density\": " << entropy.identityDensity << L",\n"
-                               << L"    \"transition_energy\": " << entropy.transitionEnergy << L",\n"
-                               << L"    \"bigram_entropy\": " << entropy.bigramEntropy << L",\n"
-                               << L"    \"prediction_confidence\": " << entropy.predictionConfidence << L",\n"
-                               << L"    \"orbit_hash\": \"0x" << std::hex << std::uppercase << entropy.orbitHash << std::dec << L"\",\n"
-                               << L"    \"category\": \"" << std::wstring(entropy.categoryName.begin(), entropy.categoryName.end()) << L"\"\n"
-                               << L"  },\n";
-                }
-
-                std::wcout << L"  \"kernel_hints\": {\n"
-                           << L"    \"hypervisor_present\": " << (summary.hints.hypervisorPresent ? L"true" : L"false") << L",\n"
-                           << L"    \"directory_table_base\": \"0x" << std::hex << std::uppercase << summary.hints.directoryTableBase << std::dec << L"\",\n"
-                           << L"    \"kpcr_address\": \"0x" << std::hex << std::uppercase << summary.hints.kpcrAddress << std::dec << L"\",\n"
-                           << L"    \"kernel_base\": \"0x" << std::hex << std::uppercase << summary.hints.kernelBase << std::dec << L"\",\n"
-                           << L"    \"kernel_size\": " << summary.hints.kernelSize << L",\n"
-                           << L"    \"build_number\": " << summary.hints.buildNumber << L"\n"
-                           << L"  },\n"
-                           << L"  \"compliance_frameworks\": [\"MITRE ATT&CK (Enterprise)\", \"NIST SP 800-53 Rev 5\", \"NIST CSF v1.1\"]\n"
-                           << L"}\n";
-            } else {
-                std::wcout << L"PhylaRAM 0.1.0-alpha — Dry-Run Topology & Kernel Hints\n\n"
-                           << L"Physical RAM    : " << (totalBytes / (1024ull * 1024ull)) << L" MiB (" << totalBytes << L" bytes)\n"
-                           << L"Highest Address : 0x" << std::hex << std::uppercase << highestEnd << std::dec << L"\n"
-                           << L"Memory Ranges   : " << runs.size() << L"\n";
-                if (summary.hints.available) {
-                    std::wcout << L"System DTB (CR3): 0x" << std::hex << std::uppercase << summary.hints.directoryTableBase << std::dec << L"\n"
-                               << L"Executing KPCR  : 0x" << std::hex << std::uppercase << summary.hints.kpcrAddress << std::dec << L"\n"
-                               << L"Kernel Base     : 0x" << std::hex << std::uppercase << summary.hints.kernelBase << std::dec << L"\n"
-                               << L"Kernel Size     : " << summary.hints.kernelSize << L" bytes\n"
-                               << L"Windows Build   : " << summary.hints.majorVersion << L"." << summary.hints.minorVersion << L"." << summary.hints.buildNumber << L"\n"
-                               << L"Hypervisor      : " << (summary.hints.hypervisorPresent ? L"Present" : L"None") << L"\n";
-                }
-                if (entropy.totalBytesAnalyzed > 0) {
-                    std::wcout << L"\n[Wavelet Transition Triage]\n"
-                               << L"Identity Density: " << std::fixed << std::setprecision(2) << (entropy.identityDensity * 100.0f) << L"%\n"
-                               << L"Transition Energy: " << std::fixed << std::setprecision(3) << entropy.transitionEnergy << L"\n"
-                               << L"Predictability  : " << std::fixed << std::setprecision(2) << (entropy.predictionConfidence * 100.0f) << L"%\n"
-                               << L"SGH5 Orbit Hash : 0x" << std::hex << std::uppercase << entropy.orbitHash << std::dec << L"\n"
-                               << L"Classification  : " << std::wstring(entropy.categoryName.begin(), entropy.categoryName.end()) << L"\n";
-                }
-                std::wcout << L"\n[PASS] Dry-run completed successfully. Zero bytes written to disk.\n";
-            }
-            exitCode = 0;
-            break;
-        }
-
-        if (!quiet && !isStdout) {
-            std::wcout << L"PhylaRAM 0.1.0-alpha — Live RAM Capture for Windows\n"
-                       << L"Physical memory : " << (totalBytes / (1024ull * 1024ull)) << L" MiB\n"
-                       << L"Ranges          : " << runs.size() << L"\n"
-                       << L"Output          : " << output << L"\n";
-            if (rateLimitMBps > 0) {
-                std::wcout << L"Bandwidth Limit : " << rateLimitMBps << L" MB/s\n";
-            }
-            std::wcout << L"\n";
-        }
-
-        if (!writer.PreflightAndOpen(rawPartial, highestEnd, totalBytes)) {
-            std::wcerr << L"Unable to create output image. Error " << writer.LastError() << L"\n";
-            break;
-        }
-
-        Sha256 sha;
-        Sha256* shaPtr = nullptr;
-        if (hashEnabled) {
-            if (!sha.Initialize()) {
-                std::wcerr << L"Unable to initialize SHA-256 engine.\n";
-                break;
-            }
-            shaPtr = &sha;
-        }
-
-        if (!Acquire(device, writer, shaPtr, summary, g_cancelled, config)) {
-            std::wcerr << (g_cancelled.load() ? L"Acquisition cancelled.\n" : L"Acquisition failed.\n");
-            break;
-        }
-
-        if (hashEnabled && !sha.Finish(summary.sha256)) {
-            std::wcerr << L"Failed to finalize SHA-256.\n";
-            break;
-        }
-
-        if (!writer.FlushAndClose()) {
-            std::wcerr << L"Failed to flush output image. Error " << writer.LastError() << L"\n";
-            break;
-        }
-
-        if (!isStdout) {
-            // Write and promote provenance map sidecar
-            if (!WriteMapJson(mapPartial, summary)) {
-                std::wcerr << L"Failed to write provenance map sidecar.\n";
-                break;
-            }
-            if (!PromoteStagingFile(mapPartial, mapFinal)) {
-                std::wcerr << L"Failed to promote provenance map sidecar.\n";
-                DeleteFileW(mapPartial.c_str());
-                break;
-            }
-
-            // Write and promote SHA-256 sidecar
-            if (hashEnabled) {
-                std::filesystem::path p(output);
-                if (!WriteSha256Sidecar(hashPartial, p.filename().wstring(), summary.sha256)) {
-                    std::wcerr << L"Failed to write SHA-256 sidecar.\n";
-                    DeleteFileW(mapFinal.c_str());
-                    break;
-                }
-                if (!PromoteStagingFile(hashPartial, hashFinal)) {
-                    std::wcerr << L"Failed to promote SHA-256 sidecar.\n";
-                    DeleteFileW(hashPartial.c_str());
-                    DeleteFileW(mapFinal.c_str());
-                    break;
-                }
-            }
-
-            // Promote RAW image only after valid completion and sidecar finalization
-            if (!PromoteStagingFile(rawPartial, rawFinal)) {
-                std::wcerr << L"Failed to rename completed image. Error " << GetLastError() << L"\n";
-                DeleteFileW(mapFinal.c_str());
-                if (hashEnabled) {
-                    DeleteFileW(hashFinal.c_str());
-                }
-                break;
-            }
-
-        }
-
-        if (!quiet && !isStdout) {
-            std::wcout << L"Acquired        : " << summary.acquiredBytes << L" bytes\n"
-                       << L"Unreadable      : " << summary.unreadableBytes << L" bytes\n"
-                       << L"Topology changed: " << (summary.topologyChanged ? L"Yes" : L"No") << L"\n";
-            if (summary.hints.available) {
-                std::wcout << L"Kernel Base     : 0x" << std::hex << summary.hints.kernelBase << std::dec << L"\n"
-                           << L"Directory Base  : 0x" << std::hex << summary.hints.directoryTableBase << std::dec << L"\n";
-            }
-            if (hashEnabled) {
-                std::wcout << L"SHA-256         : "
-                           << std::wstring(summary.sha256.begin(), summary.sha256.end()) << L"\n";
-            }
-        }
-
-        if (summary.topologyChanged || summary.unreadableBytes != 0) {
-            if (!isStdout) {
-                std::wcout << L"INCOMPLETE: acquisition reached the end but one or more integrity conditions were not perfect.\n";
-            }
-            exitCode = 2;
-        } else {
-            if (!isStdout) {
-                std::wcout << L"Complete.\n";
-            }
-            exitCode = 0;
-        }
-    } while (false);
-
-    device.Close();
-    writer.Close();
-    StopAndDeleteDriver();
-
-    for (int i = 0; i < 20; ++i) {
-        if (DeleteFileW(driverPath.c_str()) || GetLastError() == ERROR_FILE_NOT_FOUND) {
-            break;
-        }
-        Sleep(100);
-    }
-
-    return exitCode;
+    return RunCapture(options);
 }
