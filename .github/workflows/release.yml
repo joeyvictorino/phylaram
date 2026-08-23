@@ -1,4 +1,4 @@
-name: PhylaRAM Release
+name: PhylaRAM Test-Signed Pre-Release
 
 on:
   push:
@@ -11,11 +11,15 @@ permissions:
 
 jobs:
   release:
-    name: Build & Publish Release
+    name: Build & Publish Test-Signed Pre-Release
     runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Engineering Policy Check
+        shell: pwsh
+        run: python scripts\engineering_policy_check.py
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -23,37 +27,52 @@ jobs:
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
-      - name: Install WDK (NuGet)
+      - name: Install WDK Packages
         run: nuget restore packages.config -PackagesDirectory packages
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Verify Rust Source and Tests
+        working-directory: tools/phylaram-verify
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test --verbose
 
       - name: Build Driver (Release | x64)
         run: msbuild driver\phylaram.vcxproj /p:Configuration=Release /p:Platform=x64 /p:SignMode=Off /v:minimal /m
 
-      - name: Test-Sign Driver (Pre-CLI Embedding)
+      - name: Create CI Test Certificate and Sign Driver Before Embedding
         shell: pwsh
         run: |
-          $cert = New-SelfSignedCertificate -Type CodeSigningCert `
-            -Subject "CN=PhylaRAM Test Signing" `
+          $ErrorActionPreference = "Stop"
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=PhylaRAM CI Test Signing" `
             -CertStoreLocation Cert:\CurrentUser\My `
             -NotAfter (Get-Date).AddYears(1)
           $thumbprint = $cert.Thumbprint
-          echo "CERT_THUMBPRINT=$thumbprint" >> $env:GITHUB_ENV
-
-          # Export public certificate for local installation on test machines
+          "CERT_THUMBPRINT=$thumbprint" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Export-Certificate -Cert $cert -FilePath bin\PhylaRAM_TestCert.cer | Out-Null
 
           $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object LastWriteTime -Descending |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Sort-Object FullName -Descending |
             Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
 
-          if ($signtool) {
-            # Sign driver BEFORE compiling CLI so phylaram.rc embeds the signed driver!
-            & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys 2>&1
-            Write-Host "Driver test-signed with thumbprint: $thumbprint"
+          & $signtool sign /fd SHA256 /sha1 $thumbprint /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "Driver test signing failed with exit code $LASTEXITCODE"
+          }
+          & $signtool verify /pa /v bin\phylaram.sys
+          if ($LASTEXITCODE -ne 0) {
+            throw "Driver signature verification failed with exit code $LASTEXITCODE"
           }
 
       - name: Build CLI (Release | x64)
@@ -68,15 +87,28 @@ jobs:
       - name: Test-Sign CLI & Verifier
         shell: pwsh
         run: |
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match 'x64' } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
+          $ErrorActionPreference = "Stop"
+          if (-not $env:CERT_THUMBPRINT) {
+            throw "CI signing certificate thumbprint is missing"
+          }
 
-          if ($signtool -and $env:CERT_THUMBPRINT) {
-            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram.exe 2>&1
-            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 bin\phylaram-verify.exe 2>&1
-            Write-Host "CLI and Verifier test-signed successfully."
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '[\\/]x64[\\/]' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          foreach ($binary in @("bin\phylaram.exe", "bin\phylaram-verify.exe")) {
+            & $signtool sign /fd SHA256 /sha1 $env:CERT_THUMBPRINT /tr http://timestamp.digicert.com /td SHA256 $binary
+            if ($LASTEXITCODE -ne 0) {
+              throw "Signing failed for $binary with exit code $LASTEXITCODE"
+            }
+            & $signtool verify /pa /v $binary
+            if ($LASTEXITCODE -ne 0) {
+              throw "Signature verification failed for $binary with exit code $LASTEXITCODE"
+            }
           }
 
       - name: Determine Version
@@ -84,28 +116,36 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          if ($tag -match '^v(.+)$') { $ver = $Matches[1] } else { $ver = $tag }
-          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
-          echo "Version: $ver"
+          if ($tag -match '^v(.+)$') {
+            $version = $Matches[1]
+          } else {
+            $version = $tag
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Assemble Release Bundle
+      - name: Assemble Test-Signed Bundle
         shell: pwsh
         run: |
-          $ver = "${{ steps.version.outputs.VERSION }}"
-          $dir = "PhylaRAM-${ver}-x64-TEST-SIGNED"
-          mkdir dist\$dir
-          copy bin\phylaram.exe dist\$dir\
-          copy bin\phylaram.sys dist\$dir\
-          copy bin\phylaram-verify.exe dist\$dir\
-          copy bin\PhylaRAM_TestCert.cer dist\$dir\
-          copy scripts\install_test_cert.bat dist\$dir\
-          copy README.md dist\$dir\README.txt
-          copy LICENSE dist\$dir\LICENSE.txt
-          Compress-Archive -Path dist\$dir\* -DestinationPath "$dir.zip"
-          $hash = (Get-FileHash -Path "$dir.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  $dir.zip" | Out-File -FilePath "$dir.zip.sha256" -Encoding ASCII
+          $ErrorActionPreference = "Stop"
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $directoryName = "PhylaRAM-$version-x64-TEST-SIGNED"
+          $destination = Join-Path "dist" $directoryName
+          New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
-      - name: Create GitHub Release
+          Copy-Item bin\phylaram.exe $destination
+          Copy-Item bin\phylaram.sys $destination
+          Copy-Item bin\phylaram-verify.exe $destination
+          Copy-Item bin\PhylaRAM_TestCert.cer $destination
+          Copy-Item scripts\install_test_cert.bat $destination
+          Copy-Item README.md (Join-Path $destination "README.txt")
+          Copy-Item LICENSE (Join-Path $destination "LICENSE.txt")
+
+          $zip = "$directoryName.zip"
+          Compress-Archive -Path "$destination\*" -DestinationPath $zip
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding Ascii
+
+      - name: Create GitHub Pre-Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -113,13 +153,12 @@ jobs:
             PhylaRAM-${{ steps.version.outputs.VERSION }}-x64-TEST-SIGNED.zip.sha256
           draft: false
           prerelease: true
-          name: PhylaRAM ${{ github.ref_name }} (pre-release)
+          name: PhylaRAM ${{ github.ref_name }} (test-signed alpha)
           body: |
-            ## ⚠️ Pre-release — TEST-SIGNED binaries
+            ## Test-signed alpha artifact
 
-            This is a pre-release build. The driver (`phylaram.sys`) is test-signed with a self-signed certificate.
-            To load the driver, you must enable test-signing mode: `bcdedit /set testsigning on` (reboot required).
+            This is **not a production-signed release**. The kernel driver is signed with a CI-generated self-signed test certificate for use in a dedicated test environment.
 
-            See [CHANGELOG.md](CHANGELOG.md) for details.
+            Do not weaken Secure Boot, HVCI/Memory Integrity, or other security controls on a real evidence host merely to load this alpha artifact.
 
-            **This build has NOT been validated on physical hardware.**
+            Production Microsoft driver signing, Driver Verifier stress, physical-hardware topology coverage, and real forensic-tool interoperability remain separate release gates. See `docs/STATUS.md` and `docs/DRIVER_SIGNING_AND_HVCI.md`.
