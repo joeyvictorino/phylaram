@@ -1,11 +1,11 @@
 #pragma once
 
-#include <atomic>
+#include <windows.h>
 #include <bcrypt.h>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <windows.h>
 
 #include "../shared/interfaces.hpp"
 #include "../shared/phylaram.h"
