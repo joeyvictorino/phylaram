@@ -1,0 +1,30 @@
+name: Windows.Triage.PhylaRAMDryRun
+description: |
+  Performs live sub-second physical RAM topology discovery and Ring 0 kernel hints extraction
+  (System DTB/CR3, Executing KPCR, NTOSKRNL Base, and Windows Build) without writing evidence to disk.
+
+author: Jose Victorino (@joeyvictorino)
+
+sources:
+  - precondition:
+      SELECT OS From info() WHERE OS = 'windows'
+
+    query: |
+      -- Execute PhylaRAM with dry-run and JSON telemetry output
+      LET RawResult = SELECT * FROM execve(argv=["phylaram.exe", "--dry-run", "--json"])
+
+      -- Parse structured JSON response
+      LET Parsed = parse_json(data=RawResult[0].Stdout)
+
+      SELECT Fqdn AS Hostname,
+             Parsed.physical_bytes AS PhysicalRAMBytes,
+             Parsed.logical_size AS LogicalSize,
+             Parsed.range_count AS RangeCount,
+             Parsed.kernel_hints.directory_table_base AS SystemDTB_CR3,
+             Parsed.kernel_hints.kpcr_address AS KPCR_Address,
+             Parsed.kernel_hints.kernel_base AS NTOSKRNL_Base,
+             Parsed.kernel_hints.kernel_size AS NTOSKRNL_Size,
+             Parsed.kernel_hints.build_number AS WindowsBuild,
+             Parsed.kernel_hints.hypervisor_present AS HypervisorPresent,
+             RawResult[0].ReturnCode AS ExitCode
+      FROM info()

@@ -1,0 +1,61 @@
+name: Windows.Memory.PhylaRAM
+description: |
+  Acquires live physical RAM using PhylaRAM (MIT-licensed Windows kernel acquisition tool).
+  Captures a flat RAW physical memory image, provenance map (phylaram-map-2), and SHA-256 sidecar.
+
+author: Jose Victorino (@joeyvictorino)
+
+parameters:
+  - name: OutputDirectory
+    default: "C:\\Windows\\Temp\\PhylaRAM"
+    description: Staging directory for raw memory image.
+  - name: RateLimitMBps
+    type: int
+    default: 0
+    description: Bandwidth rate limit in MB/s (0 = maximum speed).
+  - name: UploadToFlow
+    type: bool
+    default: true
+    description: Automatically upload .raw image and sidecars to the Velociraptor server.
+
+sources:
+  - precondition:
+      SELECT OS From info() WHERE OS = 'windows'
+
+    query: |
+      -- 1. Ensure staging directory exists
+      LET _ = mkdir(dir=OutputDirectory)
+
+      -- 2. Construct output base path using hostname and timestamp
+      LET Host = (SELECT Fqdn FROM info())[0].Fqdn
+      LET Timestamp = timestamp(epoch=now()).Format("2006-01-02T15-04-05")
+      LET RawPath = OutputDirectory + "\\" + Host + "_" + Timestamp + ".raw"
+
+      -- 3. Prepare arguments
+      LET Args = if(condition=RateLimitMBps > 0,
+                    then=["phylaram.exe", RawPath, "--rate-limit", format(format="%d", args=[RateLimitMBps]), "--quiet"],
+                    else=["phylaram.exe", RawPath, "--quiet"])
+
+      -- 4. Execute acquisition
+      LET ExecResult = SELECT * FROM execve(argv=Args)
+
+      -- 5. Upload evidence if requested
+      SELECT * FROM if(condition=UploadToFlow,
+        then={
+          SELECT upload(file=RawPath) AS RawUpload,
+                 upload(file=RawPath + ".map.json") AS MapUpload,
+                 upload(file=RawPath + ".sha256") AS ShaUpload,
+                 ExecResult.Stdout AS Stdout,
+                 ExecResult.Stderr AS Stderr,
+                 ExecResult.ReturnCode AS ReturnCode
+          FROM scope()
+        },
+        else={
+          SELECT RawPath AS LocalPath,
+                 RawPath + ".map.json" AS MapPath,
+                 RawPath + ".sha256" AS ShaPath,
+                 ExecResult.Stdout AS Stdout,
+                 ExecResult.Stderr AS Stderr,
+                 ExecResult.ReturnCode AS ReturnCode
+          FROM scope()
+        })

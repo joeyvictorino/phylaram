@@ -37,6 +37,9 @@ jobs:
       - name: Forensic Interoperability Fixture Tests
         run: python3 tests/test_volatility_fixture.py
 
+      - name: Hardware & Memory Topology Matrix Tests
+        run: python3 tests/test_topology_matrix.py
+
   build-windows:
     name: Windows MSVC & KMDF Build
     runs-on: windows-2022
