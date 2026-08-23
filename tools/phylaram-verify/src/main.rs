@@ -50,8 +50,16 @@ fn main() {
             );
             println!("  Schema           : {}", map.schema);
             println!("  Status           : {}", map.status);
-            println!("  Logical Size     : {} bytes ({:.2} GiB)", map.logical_size, map.logical_size as f64 / (1024.0 * 1024.0 * 1024.0));
-            println!("  Physical RAM     : {} bytes ({:.2} MiB)", map.physical_bytes, map.physical_bytes as f64 / (1024.0 * 1024.0));
+            println!(
+                "  Logical Size     : {} bytes ({:.2} GiB)",
+                map.logical_size,
+                map.logical_size as f64 / (1024.0 * 1024.0 * 1024.0)
+            );
+            println!(
+                "  Physical RAM     : {} bytes ({:.2} MiB)",
+                map.physical_bytes,
+                map.physical_bytes as f64 / (1024.0 * 1024.0)
+            );
             println!("  Acquired         : {} bytes", map.acquired_bytes);
             println!("  Unreadable       : {} bytes", map.unreadable_bytes);
             println!("  Topology Changed : {}", map.topology_changed);
@@ -73,7 +81,14 @@ fn main() {
                 if let Some(build) = hints.build_number {
                     println!("    Windows Build    : {}", build);
                 }
-                println!("    Hypervisor       : {}", if hints.hypervisor_present { "Present" } else { "None" });
+                println!(
+                    "    Hypervisor       : {}",
+                    if hints.hypervisor_present {
+                        "Present"
+                    } else {
+                        "None"
+                    }
+                );
             }
 
             if verbose {
@@ -83,14 +98,20 @@ fn main() {
                 println!("  ----+---------------------+----------------+-------------");
                 for r in &map.ranges {
                     let mib = r.length as f64 / (1024.0 * 1024.0);
-                    println!("  {:3} | {:>19} | {:>14} | {:>10.2} MiB", r.driver_run, r.start, r.length, mib);
+                    println!(
+                        "  {:3} | {:>19} | {:>14} | {:>10.2} MiB",
+                        r.driver_run, r.start, r.length, mib
+                    );
                 }
                 println!("  -------------------------------------------------------------");
 
                 if !map.unreadable.is_empty() {
                     println!("\n  Unreadable Extents:");
                     for u in &map.unreadable {
-                        println!("    - Start: {}, Length: {} bytes, NTSTATUS: {}", u.start, u.length, u.ntstatus);
+                        println!(
+                            "    - Start: {}, Length: {} bytes, NTSTATUS: {}",
+                            u.start, u.length, u.ntstatus
+                        );
                     }
                 }
             }
