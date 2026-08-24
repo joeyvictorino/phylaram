@@ -31,13 +31,10 @@
 #ifndef DWMWA_WINDOW_CORNER_PREFERENCE
 #define DWMWA_WINDOW_CORNER_PREFERENCE 33
 #endif
-#ifndef DWMWCP_ROUND
-#define DWMWCP_ROUND 2
-#endif
 
 namespace {
 
-constexpr wchar_t kWindowClassName[] = L"PhylaRAM_FluentMainWindow";
+constexpr wchar_t kWindowClassName[] = L"PhylaRAM_MainWindow";
 constexpr UINT kMessageProgress = WM_APP + 1;
 constexpr UINT kMessageWorkerDone = WM_APP + 2;
 
@@ -48,38 +45,29 @@ constexpr int kControlDryRun      = 1004;
 constexpr int kControlCancel      = 1005;
 constexpr int kControlRate        = 1006;
 
-// Apple Dark & Microsoft Fluent 2 Dark Color System
+// Minimalist, Understated Pro Dark Palette (Apple / Microsoft Official System Tool)
 namespace Theme {
-    constexpr COLORREF kCanvasBg        = RGB(18, 18, 22);      // #121216 Deep Charcoal
-    constexpr COLORREF kCardBg          = RGB(28, 29, 36);      // #1C1D24 Surface Layer
-    constexpr COLORREF kCardInsetBg     = RGB(36, 38, 48);      // #242630 Control Inset
-    constexpr COLORREF kCardBorder      = RGB(52, 55, 70);      // #343746 Subtle Card Stroke
-    constexpr COLORREF kCardBorderFocus = RGB(79, 140, 255);    // #4F8CFF Accent Stroke
-    constexpr COLORREF kHeaderBadgeBg   = RGB(40, 44, 58);      // #282C3A Pill Badge
+    constexpr COLORREF kCanvasBg        = RGB(30, 30, 30);      // #1E1E1E System Dark
+    constexpr COLORREF kCardBg          = RGB(37, 37, 38);      // #252526 Elevated Container
+    constexpr COLORREF kCardInsetBg     = RGB(45, 45, 48);      // #2D2D30 Input / Inset Surface
+    constexpr COLORREF kBorder          = RGB(60, 60, 60);      // #3C3C3C 1px Crisp Divider
+    constexpr COLORREF kBorderFocus     = RGB(0, 120, 212);     // #0078D4 Accent Border
 
-    constexpr COLORREF kTextPrimary     = RGB(248, 249, 252);   // #F8F9FC Pure Crisp Light
-    constexpr COLORREF kTextSecondary   = RGB(168, 173, 192);   // #A8ADC0 Slate Text
-    constexpr COLORREF kTextMuted       = RGB(112, 118, 138);   // #70768A Muted Label
-    constexpr COLORREF kTextCyan        = RGB(56, 189, 248);    // #38BDF8 Telemetry Cyan
-    constexpr COLORREF kTextEmerald     = RGB(52, 211, 153);    // #34D399 Verified Emerald
-    constexpr COLORREF kTextAmber       = RGB(251, 191, 36);    // #FBBF24 Warning Amber
-    constexpr COLORREF kTextRose        = RGB(248, 113, 113);   // #F87171 Crimson
+    constexpr COLORREF kTextPrimary     = RGB(255, 255, 255);   // #FFFFFF Crisp White
+    constexpr COLORREF kTextSecondary   = RGB(204, 204, 204);   // #CCCCCC Neutral Body
+    constexpr COLORREF kTextMuted       = RGB(140, 140, 140);   // #8C8C8C Subdued Label
+    constexpr COLORREF kTextMono        = RGB(220, 220, 220);   // #DCDCDC Code/Hex Values
 
-    constexpr COLORREF kPrimaryBtnBg    = RGB(37, 99, 235);     // #2563EB Royal Blue Accent
-    constexpr COLORREF kPrimaryBtnHover = RGB(59, 130, 246);    // #3B82F6 Bright Blue Hover
-    constexpr COLORREF kPrimaryBtnPress = RGB(29, 78, 216);     // #1D4ED8 Deep Blue Press
+    constexpr COLORREF kAccentPrimary   = RGB(0, 120, 212);     // #0078D4 Microsoft / Apple Blue
+    constexpr COLORREF kAccentHover     = RGB(16, 132, 217);    // #1084D9
+    constexpr COLORREF kAccentPress     = RGB(0, 103, 184);     // #0067B8
 
-    constexpr COLORREF kSecondaryBtnBg    = RGB(42, 45, 58);    // #2A2D3A Neutral Card Btn
-    constexpr COLORREF kSecondaryBtnHover = RGB(56, 60, 78);    // #383C4E Hover Neutral
-    constexpr COLORREF kSecondaryBtnPress = RGB(32, 34, 44);    // #20222C Press Neutral
+    constexpr COLORREF kBtnNeutralBg    = RGB(51, 51, 51);      // #333333 Neutral Button
+    constexpr COLORREF kBtnNeutralHover = RGB(62, 62, 66);      // #3E3E42
+    constexpr COLORREF kBtnNeutralPress = RGB(40, 40, 40);      // #282828
 
-    constexpr COLORREF kDangerBtnBg    = RGB(153, 27, 27);      // #991B1B Dark Crimson
-    constexpr COLORREF kDangerBtnHover = RGB(185, 28, 28);      // #B91C1C
-    constexpr COLORREF kDangerBtnPress = RGB(127, 29, 29);      // #7F1D1D
-
-    constexpr COLORREF kProgressTrack  = RGB(24, 25, 32);      // #181920 Inset Track
-    constexpr COLORREF kProgressGrad1  = RGB(6, 182, 212);      // #06B6D4 Electric Cyan
-    constexpr COLORREF kProgressGrad2  = RGB(37, 99, 235);      // #2563EB Royal Blue
+    constexpr COLORREF kProgressTrack   = RGB(45, 45, 48);      // #2D2D30
+    constexpr COLORREF kProgressFill    = RGB(0, 120, 212);     // #0078D4 Solid Accent Fill
 }
 
 enum class WorkerOperation {
@@ -206,7 +194,7 @@ void FillSolidRect(HDC hdc, const RECT* prc, COLORREF color)
     SetBkColor(hdc, oldBk);
 }
 
-void DrawRoundedCard(HDC hdc, const RECT& rc, int radius, COLORREF bgColor, COLORREF borderColor)
+void DrawCleanBox(HDC hdc, const RECT& rc, int radius, COLORREF bgColor, COLORREF borderColor)
 {
     HBRUSH bgBrush = CreateSolidBrush(bgColor);
     HPEN borderPen = CreatePen(PS_SOLID, 1, borderColor);
@@ -219,30 +207,6 @@ void DrawRoundedCard(HDC hdc, const RECT& rc, int radius, COLORREF bgColor, COLO
     SelectObject(hdc, oldBrush);
     DeleteObject(borderPen);
     DeleteObject(bgBrush);
-}
-
-void DrawHorizontalGradient(HDC hdc, const RECT& rc, COLORREF c1, COLORREF c2)
-{
-    TRIVERTEX vertex[2];
-    vertex[0].x = rc.left;
-    vertex[0].y = rc.top;
-    vertex[0].Red = static_cast<COLOR16>(GetRValue(c1) << 8);
-    vertex[0].Green = static_cast<COLOR16>(GetGValue(c1) << 8);
-    vertex[0].Blue = static_cast<COLOR16>(GetBValue(c1) << 8);
-    vertex[0].Alpha = 0x0000;
-
-    vertex[1].x = rc.right;
-    vertex[1].y = rc.bottom;
-    vertex[1].Red = static_cast<COLOR16>(GetRValue(c2) << 8);
-    vertex[1].Green = static_cast<COLOR16>(GetGValue(c2) << 8);
-    vertex[1].Blue = static_cast<COLOR16>(GetBValue(c2) << 8);
-    vertex[1].Alpha = 0x0000;
-
-    GRADIENT_RECT gRect;
-    gRect.UpperLeft = 0;
-    gRect.LowerRight = 1;
-
-    GradientFill(hdc, vertex, 2, &gRect, 1, GRADIENT_FILL_RECT_H);
 }
 
 class MainWindow final {
@@ -293,15 +257,13 @@ private:
 
     // GDI Resources
     int dpi_ = 96;
-    HFONT fontHero_       = nullptr;
     HFONT fontTitle_      = nullptr;
     HFONT fontSubtitle_   = nullptr;
-    HFONT fontCardHead_   = nullptr;
+    HFONT fontSection_    = nullptr;
     HFONT fontBody_       = nullptr;
     HFONT fontBodyBold_   = nullptr;
     HFONT fontMono_       = nullptr;
-    HFONT fontMetricVal_  = nullptr;
-    HFONT fontMetricLbl_  = nullptr;
+    HFONT fontSmall_      = nullptr;
     HBRUSH brushCanvas_   = nullptr;
     HBRUSH brushCard_     = nullptr;
     HBRUSH brushInset_    = nullptr;
@@ -317,7 +279,7 @@ private:
     uint64_t totalBytes_      = 0;
     double currentSpeedMBps_  = 0.0;
     uint32_t currentEtaSec_   = 0;
-    std::wstring statusText_  = L"Ready. System process DTB and memory topology validated.";
+    std::wstring statusText_  = L"Ready. Physical memory topology verified.";
     std::wstring dtbText_     = L"--";
     std::wstring kbaseText_   = L"--";
     std::wstring rangesText_  = L"--";
@@ -344,19 +306,16 @@ void MainWindow::CreateFonts()
             face);
     };
 
-    fontHero_      = makeFont(20, FW_BOLD,     L"Segoe UI Variable Display");
-    fontTitle_     = makeFont(15, FW_SEMIBOLD, L"Segoe UI Variable Display");
-    fontSubtitle_  = makeFont(9,  FW_NORMAL,   L"Segoe UI Variable Text");
-    fontCardHead_  = makeFont(11, FW_SEMIBOLD, L"Segoe UI Variable Display");
-    fontBody_      = makeFont(10, FW_NORMAL,   L"Segoe UI Variable Text");
-    fontBodyBold_  = makeFont(10, FW_SEMIBOLD, L"Segoe UI Variable Text");
-    fontMono_      = makeFont(9,  FW_NORMAL,   L"Cascadia Code");
-    fontMetricVal_ = makeFont(16, FW_BOLD,     L"Segoe UI Variable Display");
-    fontMetricLbl_ = makeFont(8,  FW_SEMIBOLD, L"Segoe UI Variable Text");
+    fontTitle_    = makeFont(14, FW_SEMIBOLD, L"Segoe UI Variable Display");
+    fontSubtitle_ = makeFont(9,  FW_NORMAL,   L"Segoe UI Variable Text");
+    fontSection_  = makeFont(9,  FW_SEMIBOLD, L"Segoe UI Variable Display");
+    fontBody_     = makeFont(9,  FW_NORMAL,   L"Segoe UI Variable Text");
+    fontBodyBold_ = makeFont(9,  FW_SEMIBOLD, L"Segoe UI Variable Text");
+    fontMono_     = makeFont(9,  FW_NORMAL,   L"Cascadia Code");
+    fontSmall_    = makeFont(8,  FW_NORMAL,   L"Segoe UI Variable Text");
 
-    // Fallbacks if Segoe UI Variable is not installed
-    if (!fontHero_) fontHero_ = makeFont(20, FW_BOLD, L"Segoe UI");
-    if (!fontMono_) fontMono_ = makeFont(9, FW_NORMAL, L"Consolas");
+    if (!fontTitle_) fontTitle_ = makeFont(14, FW_SEMIBOLD, L"Segoe UI");
+    if (!fontMono_)  fontMono_  = makeFont(9,  FW_NORMAL,   L"Consolas");
 
     brushCanvas_ = CreateSolidBrush(Theme::kCanvasBg);
     brushCard_   = CreateSolidBrush(Theme::kCardBg);
@@ -365,19 +324,17 @@ void MainWindow::CreateFonts()
 
 void MainWindow::CleanupGdi()
 {
-    if (fontHero_)      { DeleteObject(fontHero_); fontHero_ = nullptr; }
-    if (fontTitle_)     { DeleteObject(fontTitle_); fontTitle_ = nullptr; }
-    if (fontSubtitle_)  { DeleteObject(fontSubtitle_); fontSubtitle_ = nullptr; }
-    if (fontCardHead_)  { DeleteObject(fontCardHead_); fontCardHead_ = nullptr; }
-    if (fontBody_)      { DeleteObject(fontBody_); fontBody_ = nullptr; }
-    if (fontBodyBold_)  { DeleteObject(fontBodyBold_); fontBodyBold_ = nullptr; }
-    if (fontMono_)      { DeleteObject(fontMono_); fontMono_ = nullptr; }
-    if (fontMetricVal_) { DeleteObject(fontMetricVal_); fontMetricVal_ = nullptr; }
-    if (fontMetricLbl_) { DeleteObject(fontMetricLbl_); fontMetricLbl_ = nullptr; }
+    if (fontTitle_)    { DeleteObject(fontTitle_); fontTitle_ = nullptr; }
+    if (fontSubtitle_) { DeleteObject(fontSubtitle_); fontSubtitle_ = nullptr; }
+    if (fontSection_)  { DeleteObject(fontSection_); fontSection_ = nullptr; }
+    if (fontBody_)     { DeleteObject(fontBody_); fontBody_ = nullptr; }
+    if (fontBodyBold_) { DeleteObject(fontBodyBold_); fontBodyBold_ = nullptr; }
+    if (fontMono_)     { DeleteObject(fontMono_); fontMono_ = nullptr; }
+    if (fontSmall_)    { DeleteObject(fontSmall_); fontSmall_ = nullptr; }
 
-    if (brushCanvas_)   { DeleteObject(brushCanvas_); brushCanvas_ = nullptr; }
-    if (brushCard_)     { DeleteObject(brushCard_); brushCard_ = nullptr; }
-    if (brushInset_)    { DeleteObject(brushInset_); brushInset_ = nullptr; }
+    if (brushCanvas_)  { DeleteObject(brushCanvas_); brushCanvas_ = nullptr; }
+    if (brushCard_)    { DeleteObject(brushCard_); brushCard_ = nullptr; }
+    if (brushInset_)   { DeleteObject(brushInset_); brushInset_ = nullptr; }
 }
 
 bool MainWindow::Create()
@@ -389,15 +346,15 @@ bool MainWindow::Create()
     windowClass.lpszClassName = kWindowClassName;
     windowClass.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hIcon         = LoadIconW(nullptr, IDI_APPLICATION);
-    windowClass.hbrBackground = nullptr; // Double buffered paint
+    windowClass.hbrBackground = nullptr;
 
     if (RegisterClassExW(&windowClass) == 0 &&
         GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
         return false;
     }
 
-    const int initialWidth  = 860;
-    const int initialHeight = 620;
+    const int initialWidth  = 740;
+    const int initialHeight = 510;
 
     window_ = CreateWindowExW(
         WS_EX_APPWINDOW,
@@ -417,10 +374,9 @@ bool MainWindow::Create()
         return false;
     }
 
-    // Apply Native Windows 11 Dark Mode & Rounded Corners
     BOOL darkMode = TRUE;
     DwmSetWindowAttribute(window_, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
-    DwmSetWindowAttribute(window_, 19, &darkMode, sizeof(darkMode)); // Win10 build 17763 fallback
+    DwmSetWindowAttribute(window_, 19, &darkMode, sizeof(darkMode));
     DWORD cornerPref = 2; // DWMWCP_ROUND
     DwmSetWindowAttribute(window_, DWMWA_WINDOW_CORNER_PREFERENCE, &cornerPref, sizeof(cornerPref));
 
@@ -506,7 +462,7 @@ LRESULT CALLBACK MainWindow::CustomEditProc(
     UNREFERENCED_PARAMETER(dwRefData);
 
     if (message == WM_NCPAINT) {
-        return 0; // Seamless dark border painted by parent
+        return 0;
     }
     return DefSubclassProc(edit, message, wParam, lParam);
 }
@@ -528,13 +484,13 @@ void MainWindow::CreateControls()
         return btn;
     };
 
-    // Destination Path Edit Control
+    // Destination Path Edit
     destination_ = CreateWindowExW(
         0,
         L"EDIT",
         DefaultEvidencePath().c_str(),
         WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | WS_TABSTOP,
-        Scale(44), Scale(128), Scale(630), Scale(30),
+        Scale(40), Scale(94), Scale(524), Scale(28),
         window_,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kControlDestination)),
         instance_,
@@ -543,7 +499,7 @@ void MainWindow::CreateControls()
     SetWindowSubclass(destination_, &MainWindow::CustomEditProc, kControlDestination, 0);
 
     // Browse Button
-    browse_ = createButton(L"Browse...", 686, 126, 130, 34, kControlBrowse);
+    browse_ = createButton(L"Browse...", 572, 92, 128, 32, kControlBrowse);
 
     // Rate Limit Combobox
     rate_ = CreateWindowExW(
@@ -551,7 +507,7 @@ void MainWindow::CreateControls()
         WC_COMBOBOXW,
         L"",
         WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
-        Scale(44), Scale(178), Scale(180), Scale(180),
+        Scale(40), Scale(134), Scale(180), Scale(180),
         window_,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kControlRate)),
         instance_,
@@ -563,12 +519,12 @@ void MainWindow::CreateControls()
         uint32_t value;
     };
     constexpr RateChoice rateChoices[] = {
-        {L"Unlimited Throughput", 0},
-        {L"500 MiB/s Pacing",     500},
-        {L"250 MiB/s Pacing",     250},
-        {L"100 MiB/s Pacing",     100},
-        {L"25 MiB/s Pacing",      25},
-        {L"1 MiB/s Forensic Low", 1},
+        {L"Unlimited", 0},
+        {L"500 MiB/s", 500},
+        {L"250 MiB/s", 250},
+        {L"100 MiB/s", 100},
+        {L"25 MiB/s", 25},
+        {L"1 MiB/s", 1},
     };
 
     for (const RateChoice& choice : rateChoices) {
@@ -587,10 +543,10 @@ void MainWindow::CreateControls()
     }
     SendMessageW(rate_, CB_SETCURSEL, 0, 0);
 
-    // Primary Action Buttons
-    start_  = createButton(L"⚡ Start RAM Capture", 44, 500, 240, 44, kControlStart);
-    dryRun_ = createButton(L"🔍 Inspect Topology", 296, 500, 200, 44, kControlDryRun);
-    cancel_ = createButton(L"✕ Cancel", 508, 500, 130, 44, kControlCancel);
+    // Action Buttons
+    start_  = createButton(L"Start Acquisition", 40, 426, 170, 36, kControlStart);
+    dryRun_ = createButton(L"Inspect Topology", 218, 426, 150, 36, kControlDryRun);
+    cancel_ = createButton(L"Cancel", 376, 426, 100, 36, kControlCancel);
 
     SetWorking(false);
 }
@@ -669,8 +625,8 @@ void MainWindow::StartWorker(WorkerOperation operation)
     if (operation == WorkerOperation::Capture && outputPath.empty()) {
         MessageBoxW(
             window_,
-            L"Please specify a valid evidence destination path.",
-            L"PhylaRAM — Destination Required",
+            L"Please select an evidence destination file path.",
+            L"PhylaRAM",
             MB_OK | MB_ICONWARNING);
         return;
     }
@@ -685,15 +641,15 @@ void MainWindow::StartWorker(WorkerOperation operation)
 
     SetWorking(true);
     SetStatus(operation == WorkerOperation::Capture
-                  ? L"Acquiring physical memory via KMDF Ring 0 driver..."
-                  : L"Inspecting physical-memory topology & Ring 0 hints...");
+                  ? L"Acquiring physical memory via Ring 0 driver..."
+                  : L"Inspecting physical-memory topology...");
 
     worker_ = std::thread([this, operation, outputPath, rateLimit]() {
         auto* result = new WorkerResult{};
         result->operation = operation;
 
         if (!IsAdministrator()) {
-            result->error = L"PhylaRAM requires Administrator privileges to manage kernel driver.";
+            result->error = L"PhylaRAM requires Administrator privileges.";
         } else {
             std::wstring supportError;
             if (!IsSupportedWindows(supportError)) {
@@ -709,7 +665,7 @@ void MainWindow::StartWorker(WorkerOperation operation)
             if (!runtime.Start(runtimeError)) {
                 result->error = runtimeError;
             } else if (!device.Open()) {
-                result->error = L"Unable to communicate with \\\\.\\PhylaRAM (Error " +
+                result->error = L"Unable to open \\\\.\\PhylaRAM (Error " +
                                 std::to_wstring(device.LastError()) + L").";
             }
         }
@@ -767,24 +723,24 @@ void MainWindow::ShowCaptureResult(const WorkerResult& result)
     if (capture.status == EvidenceCaptureStatus::Complete) {
         const std::wstring outputPath = ReadWindowText(destination_);
         std::wostringstream message;
-        message << L"Physical memory evidence bundle finalized successfully!\n\n"
-                << L"Acquired RAM: " << FormatBytes(capture.summary.acquiredBytes) << L"\n"
+        message << L"Physical memory evidence bundle finalized.\n\n"
+                << L"Acquired: " << FormatBytes(capture.summary.acquiredBytes) << L" (" << capture.summary.acquiredBytes << L" bytes)\n"
                 << L"Logical RAW Size: " << FormatBytes(capture.summary.logicalSize) << L"\n"
-                << L"Cryptographic SHA-256:\n" << ToWide(capture.summary.sha256) << L"\n\n"
-                << L"Artifacts written:\n"
+                << L"SHA-256: " << ToWide(capture.summary.sha256) << L"\n\n"
+                << L"Files generated:\n"
                 << L"• " << outputPath << L"\n"
                 << L"• " << outputPath << L".map.json\n"
                 << L"• " << outputPath << L".sha256\n\n"
-                << L"Run 'phylaram-verify' for independent offline verification.";
+                << L"Independent verification with phylaram-verify is recommended.";
 
         if (result.cleanupError != ERROR_SUCCESS) {
-            message << L"\n\nNotice: Driver cleanup returned code " << result.cleanupError << L".";
+            message << L"\n\nDriver cleanup returned code " << result.cleanupError << L".";
         }
-        SetStatus(L"Capture complete & cryptographically finalized. SHA-256 sidecar generated.");
+        SetStatus(L"Capture complete and cryptographically finalized.");
         MessageBoxW(
             window_,
             message.str().c_str(),
-            L"PhylaRAM — Acquisition Successful",
+            L"PhylaRAM — Capture Finalized",
             MB_OK | (result.cleanupError == ERROR_SUCCESS ? MB_ICONINFORMATION : MB_ICONWARNING));
         return;
     }
@@ -792,15 +748,13 @@ void MainWindow::ShowCaptureResult(const WorkerResult& result)
     if (capture.status == EvidenceCaptureStatus::Incomplete) {
         std::wostringstream message;
         message << L"Evidence bundle finalized as INCOMPLETE.\n\n"
-                << L"Unreadable Spans: " << capture.summary.unreadableBytes << L" bytes\n"
-                << L"Hardware Topology Changed: "
-                << (capture.summary.topologyChanged ? L"Yes" : L"No") << L"\n\n"
-                << L"The canonical map accurately records these unreadable regions.\n"
-                << L"Review provenance metadata prior to forensic analysis.";
+                << L"Unreadable: " << capture.summary.unreadableBytes << L" bytes\n"
+                << L"Topology changed: " << (capture.summary.topologyChanged ? L"Yes" : L"No") << L"\n\n"
+                << L"The map preserves these conditions. Review map before analysis.";
         if (result.cleanupError != ERROR_SUCCESS) {
             message << L"\n\nDriver cleanup returned code " << result.cleanupError << L".";
         }
-        SetStatus(L"Capture finalized as INCOMPLETE; unreadable hardware spans preserved in map.");
+        SetStatus(L"Capture finalized as incomplete; review provenance map.");
         MessageBoxW(
             window_,
             message.str().c_str(),
@@ -810,7 +764,7 @@ void MainWindow::ShowCaptureResult(const WorkerResult& result)
     }
 
     std::wstring message = capture.error.empty()
-                               ? L"The acquisition could not produce a finalized evidence bundle."
+                               ? L"The capture did not produce a finalized evidence bundle."
                                : capture.error;
     if (capture.systemError != ERROR_SUCCESS) {
         message += L"\nSystem error: " + std::to_wstring(capture.systemError) + L".";
@@ -820,12 +774,12 @@ void MainWindow::ShowCaptureResult(const WorkerResult& result)
     }
 
     SetStatus(capture.status == EvidenceCaptureStatus::Cancelled
-                  ? L"Acquisition cancelled by user. Partial staging files securely cleaned."
-                  : L"Acquisition failed. Staged files cleaned up.");
+                  ? L"Acquisition cancelled by user. Partial files cleaned."
+                  : L"Acquisition failed. No evidence files produced.");
     MessageBoxW(
         window_,
         message.c_str(),
-        L"PhylaRAM — Capture Status",
+        L"PhylaRAM — Status",
         MB_OK | (capture.status == EvidenceCaptureStatus::Cancelled ? MB_ICONWARNING : MB_ICONERROR));
 }
 
@@ -833,7 +787,7 @@ void MainWindow::ShowDryRunResult(const WorkerResult& result)
 {
     if (!result.dryRunSucceeded || !result.error.empty()) {
         std::wstring message = result.error.empty()
-                                   ? L"Dry-run topology inspection failed."
+                                   ? L"Dry-run inspection failed."
                                    : result.error;
         if (result.cleanupError != ERROR_SUCCESS) {
             message += L"\nDriver cleanup error: " + std::to_wstring(result.cleanupError) + L".";
@@ -853,34 +807,33 @@ void MainWindow::ShowDryRunResult(const WorkerResult& result)
 
     dtbText_    = dtbHex.str();
     kbaseText_  = kbaseHex.str();
-    rangesText_ = std::to_wstring(result.ranges.size()) + L" physical ranges (" +
-                  FormatBytes(result.totalPhysicalBytes) + L" RAM)";
+    rangesText_ = std::to_wstring(result.ranges.size()) + L" ranges (" +
+                  FormatBytes(result.totalPhysicalBytes) + L")";
 
     std::wostringstream message;
-    message << L"Hardware Physical Memory Topology:\n"
-            << L"• Total Physical RAM: " << FormatBytes(result.totalPhysicalBytes) << L" (" << result.totalPhysicalBytes << L" bytes)\n"
+    message << L"Physical Memory Topology:\n"
+            << L"• Total RAM: " << FormatBytes(result.totalPhysicalBytes) << L" (" << result.totalPhysicalBytes << L" bytes)\n"
             << L"• Highest Physical End: 0x" << std::hex << std::uppercase << result.highestPhysicalEnd << std::dec << L"\n"
-            << L"• Disjoint Memory Runs: " << result.ranges.size() << L"\n"
+            << L"• Memory Ranges: " << result.ranges.size() << L"\n"
             << L"• Topology Stability: " << (result.topologyChanged ? L"Modified during session" : L"Stable") << L"\n\n";
 
     if (result.hints.available) {
-        message << L"Live Kernel Telemetry (Ring 0):\n"
-                << L"• System Process DTB (CR3): " << dtbText_ << L"\n"
-                << L"• NT Kernel Base: " << kbaseText_ << L"\n"
-                << L"• Windows OS Build: " << result.hints.buildNumber << L" (NT "
-                << result.hints.majorVersion << L"." << result.hints.minorVersion << L")\n";
+        message << L"Kernel Hints:\n"
+                << L"• System DTB (CR3): " << dtbText_ << L"\n"
+                << L"• Kernel Base: " << kbaseText_ << L"\n"
+                << L"• Build Number: " << result.hints.buildNumber << L"\n";
     }
 
     SetStatus(result.topologyChanged
-                  ? L"Inspection completed; physical topology modified during session."
-                  : L"Inspection complete. Physical address ranges and DTB hints verified.");
+                  ? L"Inspection complete; topology changed during session."
+                  : L"Inspection complete. Physical topology and hints verified.");
 
     InvalidateRect(window_, nullptr, FALSE);
 
     MessageBoxW(
         window_,
         message.str().c_str(),
-        L"PhylaRAM — Memory Topology Inspection",
+        L"PhylaRAM — Inspection Complete",
         MB_OK | (result.topologyChanged || result.cleanupError != ERROR_SUCCESS
                      ? MB_ICONWARNING
                      : MB_ICONINFORMATION));
@@ -923,176 +876,127 @@ void MainWindow::Paint(HDC hdc)
     RECT clientRect{};
     GetClientRect(window_, &clientRect);
 
-    // Double buffering surface
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP memBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
     HGDIOBJ oldBmp = SelectObject(memDC, memBitmap);
 
     SetBkMode(memDC, TRANSPARENT);
 
-    // 1. Canvas Background
+    // 1. Canvas
     FillSolidRect(memDC, &clientRect, Theme::kCanvasBg);
 
-    // 2. Header Area
+    // 2. Header
     {
-        RECT headerRect{Scale(24), Scale(20), clientRect.right - Scale(24), Scale(80)};
-
-        // App Emblem / Icon Box
-        RECT iconRect{headerRect.left, headerRect.top, headerRect.left + Scale(44), headerRect.top + Scale(44)};
-        DrawRoundedCard(memDC, iconRect, Scale(8), Theme::kPrimaryBtnBg, Theme::kCardBorderFocus);
-
         SelectObject(memDC, fontTitle_);
-        SetTextColor(memDC, RGB(255, 255, 255));
-        RECT iconTextRect = iconRect;
-        DrawTextW(memDC, L"RAM", -1, &iconTextRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-        // App Title & Subtitle
-        SelectObject(memDC, fontHero_);
         SetTextColor(memDC, Theme::kTextPrimary);
-        RECT titleRect{headerRect.left + Scale(56), headerRect.top - Scale(2), headerRect.left + Scale(350), headerRect.top + Scale(26)};
+        RECT titleRect{Scale(24), Scale(18), Scale(300), Scale(40)};
         DrawTextW(memDC, L"PhylaRAM", -1, &titleRect, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         SelectObject(memDC, fontSubtitle_);
-        SetTextColor(memDC, Theme::kTextSecondary);
-        RECT subRect{headerRect.left + Scale(58), headerRect.top + Scale(26), headerRect.left + Scale(400), headerRect.top + Scale(44)};
-        DrawTextW(memDC, L"Kernel-Level Physical Memory Acquisition Engine", -1, &subRect, DT_LEFT | DT_TOP | DT_SINGLELINE);
-
-        // Header Badges (Right side)
-        int badgeRight = headerRect.right;
-        auto drawBadge = [&](const wchar_t* text, COLORREF textCol, int width) {
-            RECT bRect{badgeRight - Scale(width), headerRect.top + Scale(8), badgeRight, headerRect.top + Scale(32)};
-            DrawRoundedCard(memDC, bRect, Scale(12), Theme::kHeaderBadgeBg, Theme::kCardBorder);
-            SelectObject(memDC, fontMetricLbl_);
-            SetTextColor(memDC, textCol);
-            DrawTextW(memDC, text, -1, &bRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-            badgeRight -= Scale(width + 8);
-        };
-
-        drawBadge(L"ADMINISTRATOR", Theme::kTextEmerald, 110);
-        drawBadge(L"KMDF 1.15 RING 0", Theme::kTextCyan, 120);
-        drawBadge(L"v0.1.0-alpha", Theme::kTextSecondary, 88);
-    }
-
-    // 3. Card 1: Evidence Output & Settings
-    {
-        RECT cardRect{Scale(24), Scale(80), clientRect.right - Scale(24), Scale(230)};
-        DrawRoundedCard(memDC, cardRect, Scale(10), Theme::kCardBg, Theme::kCardBorder);
-
-        // Card Header
-        SelectObject(memDC, fontCardHead_);
-        SetTextColor(memDC, Theme::kTextPrimary);
-        RECT headRect{cardRect.left + Scale(20), cardRect.top + Scale(14), cardRect.right - Scale(20), cardRect.top + Scale(34)};
-        DrawTextW(memDC, L"1. EVIDENCE DESTINATION & CONFIGURATION", -1, &headRect, DT_LEFT | DT_SINGLELINE);
-
-        // Destination Input Inset Box
-        RECT inputInset{Scale(40), Scale(124), Scale(676), Scale(162)};
-        DrawRoundedCard(memDC, inputInset, Scale(6), Theme::kCardInsetBg, Theme::kCardBorder);
-
-        // Rate Limit Label & Info Note
-        SelectObject(memDC, fontBodyBold_);
-        SetTextColor(memDC, Theme::kTextSecondary);
-
-        RECT noteRect{Scale(240), Scale(180), cardRect.right - Scale(20), Scale(215)};
-        SelectObject(memDC, fontSubtitle_);
         SetTextColor(memDC, Theme::kTextMuted);
-        DrawTextW(memDC, L"• Mandatory bit-for-bit flat RAW + Logical SHA-256 + Canonical Map-2 sidecars\n• Sparse hole preservation with zero-backed accounting", -1, &noteRect, DT_LEFT);
+        RECT subRect{Scale(24), Scale(38), Scale(400), Scale(54)};
+        DrawTextW(memDC, L"Physical Memory Acquisition Engine", -1, &subRect, DT_LEFT | DT_TOP | DT_SINGLELINE);
+
+        // Version & Role Badge (Single subtle badge)
+        RECT badgeRect{clientRect.right - Scale(160), Scale(22), clientRect.right - Scale(24), Scale(44)};
+        DrawCleanBox(memDC, badgeRect, Scale(4), Theme::kCardInsetBg, Theme::kBorder);
+        SelectObject(memDC, fontSmall_);
+        SetTextColor(memDC, Theme::kTextMuted);
+        DrawTextW(memDC, L"v0.1.0-alpha · Admin", -1, &badgeRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
-    // 4. Card 2: Live Acquisition Telemetry HUD
+    // 3. Section 1: Target & Acquisition Pacing
     {
-        RECT cardRect{Scale(24), Scale(242), clientRect.right - Scale(24), Scale(482)};
-        DrawRoundedCard(memDC, cardRect, Scale(10), Theme::kCardBg, Theme::kCardBorder);
+        RECT cardRect{Scale(24), Scale(62), clientRect.right - Scale(24), Scale(182)};
+        DrawCleanBox(memDC, cardRect, Scale(6), Theme::kCardBg, Theme::kBorder);
 
-        // Card Header
-        SelectObject(memDC, fontCardHead_);
-        SetTextColor(memDC, Theme::kTextPrimary);
-        RECT headRect{cardRect.left + Scale(20), cardRect.top + Scale(14), cardRect.right - Scale(20), cardRect.top + Scale(34)};
-        DrawTextW(memDC, L"2. LIVE FORENSIC TELEMETRY & TOPOLOGY", -1, &headRect, DT_LEFT | DT_SINGLELINE);
+        SelectObject(memDC, fontSection_);
+        SetTextColor(memDC, Theme::kTextMuted);
+        RECT headRect{cardRect.left + Scale(16), cardRect.top + Scale(10), cardRect.right - Scale(16), cardRect.top + Scale(26)};
+        DrawTextW(memDC, L"TARGET & PACING", -1, &headRect, DT_LEFT | DT_SINGLELINE);
 
-        // Progress Bar Track
-        RECT progTrack{Scale(40), Scale(280), clientRect.right - Scale(40), Scale(302)};
-        DrawRoundedCard(memDC, progTrack, Scale(5), Theme::kProgressTrack, Theme::kCardBorder);
+        // Inset border around path input
+        RECT inputBorder{Scale(38), Scale(92), Scale(566), Scale(124)};
+        DrawCleanBox(memDC, inputBorder, Scale(3), Theme::kCardInsetBg, Theme::kBorder);
 
-        // Progress Bar Fill
+        // Subdued note
+        SelectObject(memDC, fontSmall_);
+        SetTextColor(memDC, Theme::kTextMuted);
+        RECT noteRect{Scale(230), Scale(138), cardRect.right - Scale(16), Scale(172)};
+        DrawTextW(memDC, L"Generates verified flat RAW image, SHA-256 digest, and JSON provenance map sidecars.", -1, &noteRect, DT_LEFT | DT_SINGLELINE);
+    }
+
+    // 4. Section 2: Acquisition Status & Telemetry Inspector
+    {
+        RECT cardRect{Scale(24), Scale(192), clientRect.right - Scale(24), Scale(410)};
+        DrawCleanBox(memDC, cardRect, Scale(6), Theme::kCardBg, Theme::kBorder);
+
+        SelectObject(memDC, fontSection_);
+        SetTextColor(memDC, Theme::kTextMuted);
+        RECT headRect{cardRect.left + Scale(16), cardRect.top + Scale(10), cardRect.right - Scale(16), cardRect.top + Scale(26)};
+        DrawTextW(memDC, L"ACQUISITION STATUS & TELEMETRY", -1, &headRect, DT_LEFT | DT_SINGLELINE);
+
+        // Progress Bar
+        RECT progTrack{Scale(40), Scale(224), clientRect.right - Scale(40), Scale(230)};
+        FillSolidRect(memDC, &progTrack, Theme::kProgressTrack);
+
         if (progressPercent_ > 0.0) {
-            int trackWidth = progTrack.right - progTrack.left - Scale(4);
+            int trackWidth = progTrack.right - progTrack.left;
             int fillWidth = static_cast<int>(trackWidth * std::min(progressPercent_ / 100.0, 1.0));
-            if (fillWidth > Scale(6)) {
-                RECT fillRect{progTrack.left + Scale(2), progTrack.top + Scale(2), progTrack.left + Scale(2) + fillWidth, progTrack.bottom - Scale(2)};
-                DrawRoundedCard(memDC, fillRect, Scale(4), Theme::kPrimaryBtnBg, Theme::kPrimaryBtnHover);
-                DrawHorizontalGradient(memDC, fillRect, Theme::kProgressGrad1, Theme::kProgressGrad2);
-            }
+            RECT fillRect{progTrack.left, progTrack.top, progTrack.left + fillWidth, progTrack.bottom};
+            FillSolidRect(memDC, &fillRect, Theme::kProgressFill);
         }
 
-        // 4 Telemetry Metrics Tiles
-        int cardInnerWidth = (clientRect.right - Scale(48)) - Scale(40);
-        int tileWidth = (cardInnerWidth - Scale(36)) / 4;
-        int tileTop = Scale(314);
-        int tileHeight = Scale(72);
+        // Clean Data Table (Key-Value inspector style)
+        int col1X = Scale(40);
+        int col2X = Scale(380);
+        int row1Y = Scale(246);
+        int row2Y = Scale(276);
+        int row3Y = Scale(306);
+        int row4Y = Scale(336);
+        int row5Y = Scale(366);
 
-        auto drawMetricTile = [&](int index, const wchar_t* label, const std::wstring& value, COLORREF valColor) {
-            int tileLeft = Scale(40) + index * (tileWidth + Scale(12));
-            RECT tileRect{tileLeft, tileTop, tileLeft + tileWidth, tileTop + tileHeight};
-            DrawRoundedCard(memDC, tileRect, Scale(6), Theme::kCardInsetBg, Theme::kCardBorder);
-
-            // Label
-            RECT lblRect{tileRect.left + Scale(10), tileRect.top + Scale(8), tileRect.right - Scale(10), tileRect.top + Scale(24)};
-            SelectObject(memDC, fontMetricLbl_);
+        auto drawRow = [&](int x, int y, const wchar_t* key, const std::wstring& val) {
+            SelectObject(memDC, fontBody_);
             SetTextColor(memDC, Theme::kTextMuted);
-            DrawTextW(memDC, label, -1, &lblRect, DT_LEFT | DT_SINGLELINE);
+            RECT keyRect{x, y, x + Scale(110), y + Scale(20)};
+            DrawTextW(memDC, key, -1, &keyRect, DT_LEFT | DT_SINGLELINE);
 
-            // Value
-            RECT valRect{tileRect.left + Scale(10), tileRect.top + Scale(26), tileRect.right - Scale(10), tileRect.bottom - Scale(8)};
-            SelectObject(memDC, fontMetricVal_);
-            SetTextColor(memDC, valColor);
-            DrawTextW(memDC, value.c_str(), -1, &valRect, DT_LEFT | DT_SINGLELINE);
+            SelectObject(memDC, fontMono_);
+            SetTextColor(memDC, Theme::kTextPrimary);
+            RECT valRect{x + Scale(115), y, x + Scale(320), y + Scale(20)};
+            DrawTextW(memDC, val.c_str(), -1, &valRect, DT_LEFT | DT_SINGLELINE);
         };
 
-        std::wostringstream speedStr;
+        std::wostringstream speedStr, progStr, etaStr;
         speedStr << std::fixed << std::setprecision(1) << currentSpeedMBps_ << L" MiB/s";
-
-        std::wostringstream progStr;
-        progStr << std::fixed << std::setprecision(1) << progressPercent_ << L"%";
-
-        std::wostringstream etaStr;
+        progStr << std::fixed << std::setprecision(1) << progressPercent_ << L"% ("
+                << FormatBytes(completedBytes_) << L" / " << FormatBytes(totalBytes_) << L")";
         if (currentEtaSec_ > 0) {
             etaStr << (currentEtaSec_ / 60) << L":" << std::setw(2) << std::setfill(L'0') << (currentEtaSec_ % 60);
         } else {
             etaStr << L"--:--";
         }
 
-        drawMetricTile(0, L"THROUGHPUT", speedStr.str(), Theme::kTextCyan);
-        drawMetricTile(1, L"PROGRESS", progStr.str(), Theme::kTextPrimary);
-        drawMetricTile(2, L"ETA REMAINING", etaStr.str(), Theme::kTextAmber);
-        drawMetricTile(3, L"STATUS", working_ ? L"ACQUIRING" : L"READY", working_ ? Theme::kTextCyan : Theme::kTextEmerald);
+        drawRow(col1X, row1Y, L"Status:", working_ ? L"Acquiring" : L"Ready");
+        drawRow(col1X, row2Y, L"Throughput:", speedStr.str());
+        drawRow(col1X, row3Y, L"Progress:", progStr.str());
+        drawRow(col1X, row4Y, L"ETA:", etaStr.str());
 
-        // Hardware & Kernel Telemetry Strip
-        RECT stripRect{Scale(40), Scale(398), clientRect.right - Scale(40), Scale(464)};
-        DrawRoundedCard(memDC, stripRect, Scale(6), Theme::kCardInsetBg, Theme::kCardBorder);
+        drawRow(col2X, row1Y, L"System DTB:", dtbText_);
+        drawRow(col2X, row2Y, L"Kernel Base:", kbaseText_);
+        drawRow(col2X, row3Y, L"Topology:", rangesText_);
 
-        SelectObject(memDC, fontMono_);
-        SetTextColor(memDC, Theme::kTextSecondary);
-
-        std::wostringstream line1, line2;
-        line1 << L"System DTB (CR3) : " << dtbText_ << L"    |    NT Kernel Base: " << kbaseText_;
-        line2 << L"Memory Topology  : " << rangesText_;
-
-        RECT t1Rect{stripRect.left + Scale(12), stripRect.top + Scale(10), stripRect.right - Scale(12), stripRect.top + Scale(28)};
-        RECT t2Rect{stripRect.left + Scale(12), stripRect.top + Scale(32), stripRect.right - Scale(12), stripRect.bottom - Scale(8)};
-        DrawTextW(memDC, line1.str().c_str(), -1, &t1Rect, DT_LEFT | DT_SINGLELINE);
-        DrawTextW(memDC, line2.str().c_str(), -1, &t2Rect, DT_LEFT | DT_SINGLELINE);
-    }
-
-    // 5. Action Bar & Status Footer
-    {
-        // Status Bar String
-        SelectObject(memDC, fontBody_);
-        SetTextColor(memDC, working_ ? Theme::kTextCyan : Theme::kTextSecondary);
-        RECT statusRect{Scale(44), Scale(554), clientRect.right - Scale(44), Scale(574)};
+        // Status Line
+        SelectObject(memDC, fontSmall_);
+        SetTextColor(memDC, Theme::kTextMuted);
+        RECT statusRect{Scale(40), row5Y, clientRect.right - Scale(40), row5Y + Scale(18)};
         DrawTextW(memDC, statusText_.c_str(), -1, &statusRect, DT_LEFT | DT_SINGLELINE);
     }
 
-    // Blit double buffer to screen
+    // 5. Action Bar
+    // Buttons are rendered by WM_DRAWITEM
+
     BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, memDC, 0, 0, SRCCOPY);
 
     SelectObject(memDC, oldBmp);
@@ -1112,7 +1016,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     }
 
     case WM_ERASEBKGND:
-        return 1; // Handled in WM_PAINT
+        return 1;
 
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORSTATIC: {
@@ -1140,28 +1044,23 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         const bool isPress = (dis->itemState & ODS_SELECTED) != 0;
         const bool isDisable = (dis->itemState & ODS_DISABLED) != 0;
 
-        COLORREF bg = Theme::kSecondaryBtnBg;
-        COLORREF border = Theme::kCardBorder;
+        COLORREF bg = Theme::kBtnNeutralBg;
+        COLORREF border = Theme::kBorder;
         COLORREF textCol = Theme::kTextPrimary;
 
         if (dis->CtlID == kControlStart) {
-            bg = isDisable ? Theme::kHeaderBadgeBg
-                           : (isPress ? Theme::kPrimaryBtnPress : (isHover ? Theme::kPrimaryBtnHover : Theme::kPrimaryBtnBg));
-            border = isDisable ? Theme::kCardBorder : Theme::kCardBorderFocus;
-            textCol = isDisable ? Theme::kTextMuted : RGB(255, 255, 255);
-        } else if (dis->CtlID == kControlCancel) {
-            bg = isDisable ? Theme::kHeaderBadgeBg
-                           : (isPress ? Theme::kDangerBtnPress : (isHover ? Theme::kDangerBtnHover : Theme::kDangerBtnBg));
-            border = isDisable ? Theme::kCardBorder : Theme::kTextRose;
+            bg = isDisable ? Theme::kCardInsetBg
+                           : (isPress ? Theme::kAccentPress : (isHover ? Theme::kAccentHover : Theme::kAccentPrimary));
+            border = isDisable ? Theme::kBorder : Theme::kAccentPrimary;
             textCol = isDisable ? Theme::kTextMuted : RGB(255, 255, 255);
         } else {
-            bg = isDisable ? Theme::kHeaderBadgeBg
-                           : (isPress ? Theme::kSecondaryBtnPress : (isHover ? Theme::kSecondaryBtnHover : Theme::kSecondaryBtnBg));
-            border = isDisable ? Theme::kCardBorder : (isHover ? Theme::kCardBorderFocus : Theme::kCardBorder);
+            bg = isDisable ? Theme::kCardBg
+                           : (isPress ? Theme::kBtnNeutralPress : (isHover ? Theme::kBtnNeutralHover : Theme::kBtnNeutralBg));
+            border = Theme::kBorder;
             textCol = isDisable ? Theme::kTextMuted : Theme::kTextPrimary;
         }
 
-        DrawRoundedCard(dis->hDC, dis->rcItem, Scale(6), bg, border);
+        DrawCleanBox(dis->hDC, dis->rcItem, Scale(4), bg, border);
 
         SelectObject(dis->hDC, (dis->CtlID == kControlStart) ? fontBodyBold_ : fontBody_);
         SetTextColor(dis->hDC, textCol);
@@ -1196,7 +1095,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (HIWORD(wParam) == BN_CLICKED && working_) {
                 cancelled_.store(true);
                 EnableWindow(cancel_, FALSE);
-                SetStatus(L"Cancellation requested. Safely completing in-flight chunk...");
+                SetStatus(L"Cancelling in-flight operation...");
             }
             return 0;
         default:
@@ -1217,7 +1116,7 @@ LRESULT MainWindow::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             }
 
             std::wostringstream oss;
-            oss << L"Acquiring RAM: " << FormatBytes(completedBytes_) << L" / " << FormatBytes(totalBytes_)
+            oss << L"Acquiring: " << FormatBytes(completedBytes_) << L" / " << FormatBytes(totalBytes_)
                 << L" (" << std::fixed << std::setprecision(1) << currentSpeedMBps_ << L" MiB/s)";
             statusText_ = oss.str();
 
@@ -1278,3 +1177,4 @@ int LaunchGui(HINSTANCE instance)
     }
     return window.Run();
 }
+
