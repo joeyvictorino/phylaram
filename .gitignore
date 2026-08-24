@@ -28,3 +28,6 @@ target/
 *.patch
 /tmp/
 packages/
+__pycache__/
+*.pyc
+tools/phylaram-verify/target/
