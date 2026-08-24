@@ -48,6 +48,12 @@ jobs:
       - name: Hardware & Memory Topology Models
         run: python3 tests/test_topology_matrix.py
 
+      - name: Hostile Input & Corrupt Fixture Rejection Suite
+        run: python3 tests/test_hostile_fuzz_fixtures.py
+
+      - name: MemProcFS Bridge Options Parser
+        run: python3 tools/phylaram_memprocfs.py -h
+
   build-windows:
     name: Windows MSVC & KMDF Build
     runs-on: windows-2022
