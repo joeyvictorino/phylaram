@@ -56,7 +56,7 @@ bool ZdmpWriter::PreflightAndOpen(const std::wstring& partialPath,
         header.PsLoadedModuleList = hints_.kernelBase;
     }
 
-    std::strncpy(header.VersionUser, "PhylaRAM 0.1.0-alpha", sizeof(header.VersionUser) - 1);
+    std::memcpy(header.VersionUser, "PhylaRAM 0.1.0-alpha", 21);
 
     header.NumberOfRuns = static_cast<uint32_t>(std::min<size_t>(runs_.size(), 32));
     header.NumberOfPages = expectedPhysicalBytes / 4096;

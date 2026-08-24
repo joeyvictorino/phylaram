@@ -5,6 +5,27 @@
 #include <sstream>
 #include <iomanip>
 
+namespace {
+
+std::string ToUtf8(const std::wstring& wstr)
+{
+    if (wstr.empty()) {
+        return {};
+    }
+    std::string out;
+    out.reserve(wstr.size());
+    for (const wchar_t wc : wstr) {
+        if (wc < 0x80) {
+            out.push_back(static_cast<char>(wc));
+        } else {
+            out.push_back('?');
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 E01Writer::E01Writer()
 {
     chunkBuffer_.resize(kChunkSize, 0);
@@ -37,11 +58,11 @@ bool E01Writer::WriteHeaderSection()
     headerSectionOffset_ = currentFileOffset_;
 
     std::ostringstream meta;
-    meta << "case_number\t" << (metadata_.caseNumber.empty() ? "CASE-001" : std::string(metadata_.caseNumber.begin(), metadata_.caseNumber.end())) << "\n";
-    meta << "evidence_number\t" << (metadata_.evidenceNumber.empty() ? "EV-001" : std::string(metadata_.evidenceNumber.begin(), metadata_.evidenceNumber.end())) << "\n";
-    meta << "examiner_name\t" << (metadata_.examiner.empty() ? "PhylaRAM Forensic Examiner" : std::string(metadata_.examiner.begin(), metadata_.examiner.end())) << "\n";
-    meta << "description\t" << (metadata_.description.empty() ? "Physical Memory Image" : std::string(metadata_.description.begin(), metadata_.description.end())) << "\n";
-    meta << "notes\t" << (metadata_.notes.empty() ? "Captured via PhylaRAM (byte-accurate provenance)" : std::string(metadata_.notes.begin(), metadata_.notes.end())) << "\n";
+    meta << "case_number\t" << (metadata_.caseNumber.empty() ? "CASE-001" : ToUtf8(metadata_.caseNumber)) << "\n";
+    meta << "evidence_number\t" << (metadata_.evidenceNumber.empty() ? "EV-001" : ToUtf8(metadata_.evidenceNumber)) << "\n";
+    meta << "examiner_name\t" << (metadata_.examiner.empty() ? "PhylaRAM Forensic Examiner" : ToUtf8(metadata_.examiner)) << "\n";
+    meta << "description\t" << (metadata_.description.empty() ? "Physical Memory Image" : ToUtf8(metadata_.description)) << "\n";
+    meta << "notes\t" << (metadata_.notes.empty() ? "Captured via PhylaRAM (byte-accurate provenance)" : ToUtf8(metadata_.notes)) << "\n";
     meta << "system_date\t2026-08-24 00:00:00\n";
     meta << "acquisition_date\t2026-08-24 00:00:00\n";
     meta << "compression_type\tbest\n";
@@ -51,7 +72,7 @@ bool E01Writer::WriteHeaderSection()
     const uint64_t totalSectionSize = sizeof(EwfSectionHeader) + sectionDataSize + 4; // header + data + adler32
 
     EwfSectionHeader sectionHeader{};
-    std::strncpy(sectionHeader.Type, "header", sizeof(sectionHeader.Type) - 1);
+    std::memcpy(sectionHeader.Type, "header", 6);
     sectionHeader.NextOffset = currentFileOffset_ + totalSectionSize;
     sectionHeader.SectionSize = totalSectionSize;
     sectionHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectionHeader), sizeof(sectionHeader) - 4);
@@ -96,7 +117,7 @@ bool E01Writer::WriteVolumeSection()
     const uint64_t totalSectionSize = sizeof(EwfSectionHeader) + sizeof(vol) + 4;
 
     EwfSectionHeader sectionHeader{};
-    std::strncpy(sectionHeader.Type, "volume", sizeof(sectionHeader.Type) - 1);
+    std::memcpy(sectionHeader.Type, "volume", 6);
     sectionHeader.NextOffset = currentFileOffset_ + totalSectionSize;
     sectionHeader.SectionSize = totalSectionSize;
     sectionHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectionHeader), sizeof(sectionHeader) - 4);
@@ -172,7 +193,7 @@ bool E01Writer::PreflightAndOpen(const std::wstring& partialPath,
 
     // Write "sectors" section header
     EwfSectionHeader sectorsHeader{};
-    std::strncpy(sectorsHeader.Type, "sectors", sizeof(sectorsHeader.Type) - 1);
+    std::memcpy(sectorsHeader.Type, "sectors", 7);
     sectorsHeader.NextOffset = 0; // updated upon completion
     sectorsHeader.SectionSize = sizeof(sectorsHeader);
     sectorsHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectorsHeader), sizeof(sectorsHeader) - 4);
@@ -205,7 +226,7 @@ bool E01Writer::FlushActiveChunk()
         written != kChunkSize) {
         lastError_ = GetLastError();
         return false;
-    }
+        }
     currentFileOffset_ += written;
 
     const uint32_t chunkAdler = CalculateAdler32(chunkBuffer_.data(), kChunkSize);
@@ -260,7 +281,7 @@ bool E01Writer::WriteTableSection()
     const uint64_t totalSectionSize = sizeof(EwfSectionHeader) + tableDataSize + 4;
 
     EwfSectionHeader sectionHeader{};
-    std::strncpy(sectionHeader.Type, "table", sizeof(sectionHeader.Type) - 1);
+    std::memcpy(sectionHeader.Type, "table", 5);
     sectionHeader.NextOffset = currentFileOffset_ + totalSectionSize;
     sectionHeader.SectionSize = totalSectionSize;
     sectionHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectionHeader), sizeof(sectionHeader) - 4);
@@ -301,7 +322,7 @@ bool E01Writer::WriteHashSection()
     const uint64_t totalSectionSize = sizeof(EwfSectionHeader) + sizeof(hashData);
 
     EwfSectionHeader sectionHeader{};
-    std::strncpy(sectionHeader.Type, "hash", sizeof(sectionHeader.Type) - 1);
+    std::memcpy(sectionHeader.Type, "hash", 4);
     sectionHeader.NextOffset = currentFileOffset_ + totalSectionSize;
     sectionHeader.SectionSize = totalSectionSize;
     sectionHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectionHeader), sizeof(sectionHeader) - 4);
@@ -329,7 +350,7 @@ bool E01Writer::WriteDoneSection()
     doneSectionOffset_ = currentFileOffset_;
 
     EwfSectionHeader sectionHeader{};
-    std::strncpy(sectionHeader.Type, "done", sizeof(sectionHeader.Type) - 1);
+    std::memcpy(sectionHeader.Type, "done", 4);
     sectionHeader.NextOffset = 0;
     sectionHeader.SectionSize = sizeof(sectionHeader);
     sectionHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectionHeader), sizeof(sectionHeader) - 4);
@@ -363,7 +384,7 @@ bool E01Writer::FlushAndClose()
     SetFilePointerEx(file_.Get(), li, nullptr, FILE_BEGIN);
 
     EwfSectionHeader sectorsHeader{};
-    std::strncpy(sectorsHeader.Type, "sectors", sizeof(sectorsHeader.Type) - 1);
+    std::memcpy(sectorsHeader.Type, "sectors", 7);
     sectorsHeader.NextOffset = currentFileOffset_;
     sectorsHeader.SectionSize = sectorsSectionSize;
     sectorsHeader.Checksum = CalculateAdler32(reinterpret_cast<const uint8_t*>(&sectorsHeader), sizeof(sectorsHeader) - 4);

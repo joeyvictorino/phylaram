@@ -169,12 +169,12 @@ EvidenceCaptureResult CaptureEvidenceToFile(
             L"SHA-256 finalization failed; no evidence bundle was published.");
     }
 
-    if (!writer.FlushAndClose()) {
-        const DWORD writeError = writer.LastError();
+    if (!writer->FlushAndClose()) {
+        const DWORD writeError = writer->LastError();
         RemoveStagingFiles(paths);
         return Failure(
             EvidenceCaptureStatus::Failed,
-            L"The staged RAW image could not be flushed durably; no evidence bundle was published.",
+            L"The staged evidence image could not be flushed durably; no evidence bundle was published.",
             writeError);
     }
 
