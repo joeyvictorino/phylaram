@@ -34,6 +34,10 @@ jobs:
           /tmp/test_map_json
           clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser
           /tmp/test_cli_parser
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_zdmp_format.cpp -o /tmp/test_zdmp_format
+          /tmp/test_zdmp_format
+          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_e01_format.cpp -o /tmp/test_e01_format
+          /tmp/test_e01_format
 
       - name: Rust Format, Clippy & Tests
         working-directory: tools/phylaram-verify
@@ -51,8 +55,11 @@ jobs:
       - name: Hostile Input & Corrupt Fixture Rejection Suite
         run: python3 tests/test_hostile_fuzz_fixtures.py
 
-      - name: MemProcFS Bridge Options Parser
-        run: python3 tools/phylaram_memprocfs.py -h
+      - name: Forensic Format Converters & Bridge Options
+        run: |
+          python3 tools/phylaram_convert.py -h
+          python3 tools/phylaram_memprocfs.py -h
+          python3 tools/phylaram_vol3.py -h
 
   build-windows:
     name: Windows MSVC & KMDF Build

@@ -26,6 +26,8 @@ struct CliOptions {
     bool quiet = false;
     bool json = false;
     uint32_t rateLimitMBps = 0;
+    OutputFormat format = OutputFormat::Raw;
+    EvidenceMetadata metadata;
 };
 
 BOOL WINAPI ConsoleHandler(DWORD eventType)
@@ -44,18 +46,27 @@ void PrintUsage()
     std::wcout
         << L"PhylaRAM 0.1.0-alpha - Live physical-memory acquisition for Windows\n\n"
         << L"Usage:\n"
-        << L"  phylaram.exe <output.raw> [options]\n"
+        << L"  phylaram.exe <output_path> [options]\n"
         << L"  phylaram.exe --dry-run [--json]\n"
         << L"  phylaram.exe --gui\n\n"
+        << L"Supported Output Formats (auto-detected by extension or set via --format):\n"
+        << L"  .raw                  Flat physical-address-preserving sparse raw image\n"
+        << L"  .zdmp, .dmp           Microsoft 64-bit Complete Memory Crash Dump\n"
+        << L"  .e01                  Expert Witness Compression Format (EnCase EWF)\n\n"
         << L"Options:\n"
+        << L"  --format <fmt>        Explicit format: raw, zdmp, dmp, e01.\n"
+        << L"  --case-number <str>   Case identifier (for E01 metadata).\n"
+        << L"  --evidence-number <s> Evidence identifier (for E01 metadata).\n"
+        << L"  --examiner <str>      Examiner name (for E01 metadata).\n"
+        << L"  --description <str>   Evidence description.\n"
+        << L"  --notes <str>         Acquisition notes.\n"
         << L"  --rate-limit <MiB/s>  Limit acquisition throughput; 0 means unlimited.\n"
         << L"  --quiet               Suppress interactive acquisition progress.\n"
         << L"  --dry-run             Inspect topology and kernel hints without creating evidence.\n"
         << L"  --json                Emit dry-run output as JSON.\n"
         << L"  --gui                 Launch the native graphical interface.\n"
         << L"  --help, -h            Display this help.\n\n"
-        << L"A successful capture always creates RAW, map.json, and SHA-256 sidecars.\n"
-        << L"Raw stdout capture and hash-free evidence are intentionally unsupported.\n";
+        << L"A successful capture always creates evidence, map.json, and SHA-256 sidecars.\n";
 }
 
 bool ParseUint32(const std::wstring& text, uint32_t& value)
@@ -113,6 +124,67 @@ bool ParseCommandLine(int argc,
         }
         if (argument == L"--quiet") {
             options.quiet = true;
+            continue;
+        }
+        if (argument == L"--format") {
+            if (index + 1 >= argc) {
+                error = L"--format requires a format name (raw, zdmp, dmp, e01).";
+                return false;
+            }
+            std::wstring fmt = argv[++index];
+            for (auto& c : fmt) {
+                c = static_cast<wchar_t>(towlower(c));
+            }
+            if (fmt == L"raw") {
+                options.format = OutputFormat::Raw;
+            } else if (fmt == L"zdmp" || fmt == L"dmp") {
+                options.format = OutputFormat::Zdmp;
+            } else if (fmt == L"e01") {
+                options.format = OutputFormat::E01;
+            } else {
+                error = L"Unknown --format value: " + fmt + L". Supported formats: raw, zdmp, dmp, e01.";
+                return false;
+            }
+            continue;
+        }
+        if (argument == L"--case-number") {
+            if (index + 1 >= argc) {
+                error = L"--case-number requires a string argument.";
+                return false;
+            }
+            options.metadata.caseNumber = argv[++index];
+            continue;
+        }
+        if (argument == L"--evidence-number") {
+            if (index + 1 >= argc) {
+                error = L"--evidence-number requires a string argument.";
+                return false;
+            }
+            options.metadata.evidenceNumber = argv[++index];
+            continue;
+        }
+        if (argument == L"--examiner") {
+            if (index + 1 >= argc) {
+                error = L"--examiner requires a string argument.";
+                return false;
+            }
+            options.metadata.examiner = argv[++index];
+            continue;
+        }
+        if (argument == L"--description") {
+            if (index + 1 >= argc) {
+                error = L"--description requires a string argument.";
+                return false;
+            }
+            options.metadata.description = argv[++index];
+            continue;
+        }
+        if (argument == L"--notes") {
+            if (index + 1 >= argc) {
+                error = L"--notes requires a string argument.";
+                return false;
+            }
+            options.metadata.notes = argv[++index];
             continue;
         }
         if (argument == L"--rate-limit") {
@@ -332,6 +404,8 @@ int RunCapture(const CliOptions& options)
     AcquisitionConfig config;
     config.quiet = options.quiet;
     config.rateLimitMBps = options.rateLimitMBps;
+    config.format = options.format;
+    config.metadata = options.metadata;
 
     gCancelled.store(false);
     EvidenceCaptureResult result = CaptureEvidenceToFile(

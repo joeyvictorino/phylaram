@@ -58,6 +58,9 @@ def main():
         ("Volatility 3 Synthetic Fixture & Bridge", [sys.executable, "tests/test_volatility_fixture.py"], REPO_ROOT),
         ("Memory Topology Matrix (5 Scenarios)", [sys.executable, "tests/test_topology_matrix.py"], REPO_ROOT),
         ("Hostile Input & Corrupt Fixture Suite", [sys.executable, "tests/test_hostile_fuzz_fixtures.py"], REPO_ROOT),
+        ("ZDMP Complete Crash Dump Format Tests", "clang++ -std=c++20 -Wall -Wextra -Werror tests/test_zdmp_format.cpp -o /tmp/test_zdmp_format && /tmp/test_zdmp_format", REPO_ROOT),
+        ("E01 Expert Witness Format Container Tests", "clang++ -std=c++20 -Wall -Wextra -Werror tests/test_e01_format.cpp -o /tmp/test_e01_format && /tmp/test_e01_format", REPO_ROOT),
+        ("PhylaRAM Offline Converter Options Parser", [sys.executable, "tools/phylaram_convert.py", "-h"], REPO_ROOT),
         ("MemProcFS Bridge Options Parser", [sys.executable, "tools/phylaram_memprocfs.py", "-h"], REPO_ROOT),
     ]
 

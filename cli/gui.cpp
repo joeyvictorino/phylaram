@@ -583,7 +583,10 @@ void MainWindow::BrowseForDestination()
     dialog.lStructSize = sizeof(dialog);
     dialog.hwndOwner   = window_;
     dialog.lpstrFilter =
-        L"RAW physical memory image (*.raw)\0*.raw\0All files (*.*)\0*.*\0";
+        L"RAW physical memory image (*.raw)\0*.raw\0"
+        L"Expert Witness Format (*.e01)\0*.e01\0"
+        L"Complete Crash Dump (*.zdmp;*.dmp)\0*.zdmp;*.dmp\0"
+        L"All files (*.*)\0*.*\0";
     dialog.lpstrFile   = buffer.data();
     dialog.nMaxFile    = static_cast<DWORD>(buffer.size());
     dialog.lpstrDefExt = L"raw";

@@ -68,9 +68,32 @@ public:
     virtual uint32_t LastError() const noexcept = 0;
 };
 
+enum class OutputFormat {
+    Raw,
+    Zdmp,
+    E01,
+};
+
+struct EvidenceMetadata {
+    std::wstring caseNumber;
+    std::wstring evidenceNumber;
+    std::wstring examiner;
+    std::wstring description;
+    std::wstring notes;
+};
+
 class IRawWriter {
 public:
     virtual ~IRawWriter() = default;
+
+    virtual void Configure(const std::vector<MemoryRun>& runs,
+                           const KernelHints& hints,
+                           const EvidenceMetadata& metadata)
+    {
+        (void)runs;
+        (void)hints;
+        (void)metadata;
+    }
 
     virtual bool PreflightAndOpen(const std::wstring& partialPath,
                                   uint64_t logicalSize,

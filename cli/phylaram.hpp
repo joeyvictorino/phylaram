@@ -183,9 +183,14 @@ using ProgressCallback = void (*)(uint64_t acquiredBytes,
                                   uint32_t etaSeconds,
                                   void* userData);
 
+#include "zdmp_writer.hpp"
+#include "e01_writer.hpp"
+
 struct AcquisitionConfig {
     bool quiet = false;
     uint32_t rateLimitMBps = 0;
+    OutputFormat format = OutputFormat::Raw;
+    EvidenceMetadata metadata;
     ProgressCallback onProgress = nullptr;
     void* callbackData = nullptr;
 };

@@ -51,7 +51,7 @@
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>bcrypt.lib;advapi32.lib;user32.lib;gdi32.lib;msimg32.lib;shell32.lib;comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>cabinet.lib;bcrypt.lib;advapi32.lib;user32.lib;gdi32.lib;msimg32.lib;shell32.lib;comctl32.lib;comdlg32.lib;dwmapi.lib;uxtheme.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <CETCompat>true</CETCompat>
       <DataExecutionPrevention>true</DataExecutionPrevention>
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
@@ -68,12 +68,16 @@
     <ClCompile Include="driver_resource.cpp" />
     <ClCompile Include="driver_service.cpp" />
     <ClCompile Include="raw_writer.cpp" />
+    <ClCompile Include="zdmp_writer.cpp" />
+    <ClCompile Include="e01_writer.cpp" />
     <ClCompile Include="sha256.cpp" />
     <ClCompile Include="map.cpp" />
     <ClCompile Include="acquire.cpp" />
     <ClCompile Include="evidence_transaction.cpp" />
     <ClInclude Include="phylaram.hpp" />
     <ClInclude Include="gui.hpp" />
+    <ClInclude Include="zdmp_writer.hpp" />
+    <ClInclude Include="e01_writer.hpp" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="..\shared\phylaram.h" />
     <ClInclude Include="..\shared\interfaces.hpp" />

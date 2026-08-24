@@ -13,12 +13,28 @@ enum class Command {
     Help,
 };
 
+enum class OutputFormat {
+    Raw,
+    Zdmp,
+    E01,
+};
+
+struct EvidenceMetadata {
+    std::wstring caseNumber;
+    std::wstring evidenceNumber;
+    std::wstring examiner;
+    std::wstring description;
+    std::wstring notes;
+};
+
 struct CliOptions {
     Command command = Command::Capture;
     std::wstring output;
     bool quiet = false;
     bool json = false;
     uint32_t rateLimitMBps = 0;
+    OutputFormat format = OutputFormat::Raw;
+    EvidenceMetadata metadata;
     bool valid = false;
 };
 
@@ -69,6 +85,38 @@ CliOptions ParseArgs(const std::vector<std::wstring>& args)
             options.quiet = true;
         } else if (argument == L"--json") {
             options.json = true;
+        } else if (argument == L"--format") {
+            if (index + 1 >= args.size()) {
+                return options;
+            }
+            std::wstring fmt = args[++index];
+            for (auto& c : fmt) {
+                c = static_cast<wchar_t>(towlower(c));
+            }
+            if (fmt == L"raw") {
+                options.format = OutputFormat::Raw;
+            } else if (fmt == L"zdmp" || fmt == L"dmp") {
+                options.format = OutputFormat::Zdmp;
+            } else if (fmt == L"e01") {
+                options.format = OutputFormat::E01;
+            } else {
+                return options;
+            }
+        } else if (argument == L"--case-number") {
+            if (index + 1 >= args.size()) return options;
+            options.metadata.caseNumber = args[++index];
+        } else if (argument == L"--evidence-number") {
+            if (index + 1 >= args.size()) return options;
+            options.metadata.evidenceNumber = args[++index];
+        } else if (argument == L"--examiner") {
+            if (index + 1 >= args.size()) return options;
+            options.metadata.examiner = args[++index];
+        } else if (argument == L"--description") {
+            if (index + 1 >= args.size()) return options;
+            options.metadata.description = args[++index];
+        } else if (argument == L"--notes") {
+            if (index + 1 >= args.size()) return options;
+            options.metadata.notes = args[++index];
         } else if (argument == L"--rate-limit") {
             if (index + 1 >= args.size() ||
                 !ParseUint32(args[++index], options.rateLimitMBps)) {
@@ -187,6 +235,17 @@ int main()
         const CliOptions gui = ParseArgs({L"--gui"});
         assert(noArgs.valid && noArgs.command == Command::Gui);
         assert(gui.valid && gui.command == Command::Gui);
+    }
+
+    {
+        const CliOptions zdmp = ParseArgs({L"dump.zdmp", L"--format", L"zdmp"});
+        const CliOptions e01 = ParseArgs({L"evidence.e01", L"--format", L"e01", L"--case-number", L"CASE-99", L"--examiner", L"Special Agent Fox"});
+        assert(zdmp.valid && zdmp.format == OutputFormat::Zdmp);
+        assert(e01.valid && e01.format == OutputFormat::E01);
+        assert(e01.metadata.caseNumber == L"CASE-99");
+        assert(e01.metadata.examiner == L"Special Agent Fox");
+
+        assert(!ParseArgs({L"mem.raw", L"--format", L"invalid_fmt"}).valid);
     }
 
     std::cout << "[PASS] Strict CLI contract tests passed.\n";

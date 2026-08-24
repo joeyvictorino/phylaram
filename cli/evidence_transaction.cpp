@@ -111,20 +111,45 @@ EvidenceCaptureResult CaptureEvidenceToFile(
             L"Unable to initialize SHA-256.");
     }
 
-    RawWriter writer;
-    if (!writer.PreflightAndOpen(
+    OutputFormat format = config.format;
+    std::wstring ext = std::filesystem::path(outputPath).extension().wstring();
+    for (auto& c : ext) {
+        c = static_cast<wchar_t>(towlower(c));
+    }
+    if (format == OutputFormat::Raw) {
+        if (ext == L".zdmp" || ext == L".dmp") {
+            format = OutputFormat::Zdmp;
+        } else if (ext == L".e01") {
+            format = OutputFormat::E01;
+        }
+    }
+
+    std::unique_ptr<IRawWriter> writer;
+    if (format == OutputFormat::Zdmp) {
+        writer = std::make_unique<ZdmpWriter>();
+    } else if (format == OutputFormat::E01) {
+        writer = std::make_unique<E01Writer>();
+    } else {
+        writer = std::make_unique<RawWriter>();
+    }
+
+    KernelHints hints;
+    (void)device.QueryHints(hints);
+    writer->Configure(runs, hints, config.metadata);
+
+    if (!writer->PreflightAndOpen(
             paths.rawPartial,
             highestPhysicalEnd,
             totalPhysicalBytes)) {
         return Failure(
             EvidenceCaptureStatus::Failed,
-            L"Unable to create and preflight the staged RAW image.",
-            writer.LastError());
+            L"Unable to create and preflight the staged evidence image.",
+            writer->LastError());
     }
 
     EvidenceCaptureResult result;
-    if (!Acquire(device, writer, hasher, result.summary, cancelled, config)) {
-        writer.Close();
+    if (!Acquire(device, *writer, hasher, result.summary, cancelled, config)) {
+        writer->Close();
         RemoveStagingFiles(paths);
         result.status = cancelled.load()
                             ? EvidenceCaptureStatus::Cancelled
@@ -137,7 +162,7 @@ EvidenceCaptureResult CaptureEvidenceToFile(
     }
 
     if (!hasher.Finish(result.summary.sha256)) {
-        writer.Close();
+        writer->Close();
         RemoveStagingFiles(paths);
         return Failure(
             EvidenceCaptureStatus::Failed,
