@@ -158,6 +158,7 @@ jobs:
           Copy-Item bin\phylaram-verify.exe $destination
           Copy-Item bin\PhylaRAM_TestCert.cer $destination
           Copy-Item scripts\install_test_cert.bat $destination
+          Copy-Item README-FIRST.txt (Join-Path $destination "README-FIRST.txt")
           Copy-Item README.md (Join-Path $destination "README.txt")
           Copy-Item LICENSE (Join-Path $destination "LICENSE.txt")
 

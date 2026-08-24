@@ -6,14 +6,14 @@ If you discover a security vulnerability in PhylaRAM (particularly in the kernel
 
 **Do NOT report security vulnerabilities through public GitHub issues.**
 
-Please send security reports directly to:
-- **Email:** [joey.victorino@gmail.com](mailto:joey.victorino@gmail.com)
-- **Subject:** `[SECURITY] PhylaRAM Vulnerability Report`
+Please submit security reports via:
+1. **GitHub Private Vulnerability Reporting:** Use the [Advisory Reporting](https://github.com/joeyvictorino/phylaram/security/advisories/new) feature on GitHub.
+2. **Direct Security Contact:** Send an email to [joey.victorino@gmail.com](mailto:joey.victorino@gmail.com) with subject `[SECURITY] PhylaRAM Vulnerability Report`.
 
 Include:
 1. Description of the vulnerability and its potential impact.
 2. Exact steps, proof of concept (PoC), or environment details to reproduce.
-3. Affected versions and platforms.
+3. Affected versions, commit SHAs, and Windows builds.
 
 We will acknowledge receipt within 48 hours and work with you on a coordinated disclosure timeline.
 

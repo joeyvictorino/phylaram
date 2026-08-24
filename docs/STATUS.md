@@ -10,7 +10,7 @@ This report separates implementation state from verification evidence. A feature
 
 ## 1. Current Implementation State
 
-The current remediation branch includes:
+The current `main` branch includes:
 
 - C17 KMDF control driver with exclusive SYSTEM/Administrator access;
 - frozen run-index/offset physical read protocol;

@@ -1,0 +1,60 @@
+name: Validation Gate Result
+description: Submit evidence or test results for an open validation gate (Gates 2-6)
+title: "[GATE-EVIDENCE]: "
+labels: ["validation", "hardware-required"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to submit test results and logs for one of the open PhylaRAM validation gates (SDV, Driver Verifier stress, hardware topology, Microsoft driver signing, Volatility/MemProcFS).
+
+  - type: dropdown
+    id: gate_number
+    attributes:
+      label: Target Validation Gate
+      options:
+        - "Gate 2: Static Driver Verifier (SDV)"
+        - "Gate 3: Driver Verifier Dynamic Stress (100 Cycles)"
+        - "Gate 4: Hardware Memory Topology Matrix"
+        - "Gate 5: Production Driver Signing & HVCI Hardening"
+        - "Gate 6: Real Acquired RAM in Volatility & MemProcFS"
+    validations:
+      required: true
+
+  - type: input
+    id: commit_sha
+    attributes:
+      label: Tested Git Commit SHA
+      description: Exact commit SHA of PhylaRAM tested
+      placeholder: b588deb1d5a5834a4e1ddf9cde621cc8cdbc8054
+    validations:
+      required: true
+
+  - type: input
+    id: test_environment
+    attributes:
+      label: Test System & Hardware Configuration
+      description: OS version, build number, RAM size, CPU model, storage target
+      placeholder: Windows 11 23H2 (Build 22631.4037), 128 GB DDR4 (2-Socket NUMA), NTFS NVMe
+    validations:
+      required: true
+
+  - type: textarea
+    id: execution_procedure
+    attributes:
+      label: Execution Commands & Procedure
+      description: Exact commands run during the test
+      placeholder: |
+        verifier.exe /standard /driver phylaram.sys
+        # Executed stress loop:
+        1..100 | ForEach-Object { .\phylaram.exe C:\evidence\run_$_.raw }
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence_log
+    attributes:
+      label: Evidence Log / Verifier Output
+      description: Paste relevant command outputs, verification logs, or checksums
+    validations:
+      required: true

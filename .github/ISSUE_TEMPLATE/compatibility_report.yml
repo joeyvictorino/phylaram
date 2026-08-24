@@ -1,0 +1,63 @@
+name: Hardware / Analysis Compatibility Report
+description: Report forensic tool or Windows hardware compatibility results with PhylaRAM
+title: "[COMPAT]: "
+labels: ["validation", "forensics"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a compatibility report. Documenting real-world validation across Windows builds, hypervisors, and forensic analysis frameworks (Volatility 3, MemProcFS) helps harden PhylaRAM.
+
+  - type: input
+    id: windows_build
+    attributes:
+      label: Windows OS Build
+      description: Exact Windows version, edition, and build (e.g. Windows 11 Enterprise 23H2 Build 22631.4037)
+      placeholder: Windows 11 23H2 (Build 22631.xxxx)
+    validations:
+      required: true
+
+  - type: input
+    id: hardware_spec
+    attributes:
+      label: Hardware / VM Topology
+      description: Bare-metal hardware or hypervisor details (RAM size, CPU, NUMA, ReBAR, storage filesystem)
+      placeholder: 64 GB DDR5, AMD Ryzen 9, NVMe NTFS, Hyper-V VM
+    validations:
+      required: true
+
+  - type: dropdown
+    id: validation_scope
+    attributes:
+      label: Validation Category
+      options:
+        - "Physical Bare-Metal Acquisition"
+        - "Virtual Machine Lab Acquisition"
+        - "Volatility 3 Analysis"
+        - "MemProcFS Mount / Inspection"
+        - "Rust Verifier (phylaram-verify)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: results_summary
+    attributes:
+      label: Validation Summary & Observations
+      description: Describe what was executed and observed. Include terminal status, acquired bytes, and any unreadable page observations.
+      placeholder: Acquired 64 GiB image in 142 seconds. Provenance map showed 0 unreadable bytes. Verified with phylaram-verify. Successfully ran vol -f mem.raw windows.pslist.
+    validations:
+      required: true
+
+  - type: textarea
+    id: map_telemetry
+    attributes:
+      label: Map Metadata Snippet (Optional)
+      description: Paste relevant fields from `<output>.map.json` (such as `kernel_hints` and `ranges`).
+      placeholder: |
+        {
+          "status": "complete",
+          "logical_size": 68719476736,
+          "kernel_hints": { ... }
+        }
+    validations:
+      required: false

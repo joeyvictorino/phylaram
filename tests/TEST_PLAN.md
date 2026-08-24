@@ -126,7 +126,7 @@ Windows integration tests SHOULD exercise the real user-mode transaction against
 11. cancellation publishes no successful final bundle;
 12. GUI and CLI consume the same `CaptureEvidenceToFile` result semantics.
 
-This is a required regression area for the defects that motivated the remediation branch.
+This is a required regression area for evidence transaction safety.
 
 ---
 
