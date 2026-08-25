@@ -12,7 +12,7 @@
 
 ### Quick Actions
 
-[⬇️ **Download Windows Alpha (Test-Signed)**](https://github.com/joeyvictorino/phylaram/releases) &nbsp;|&nbsp; [📊 **Validation Status & Evidence**](docs/VALIDATION_EVIDENCE.md) &nbsp;|&nbsp; [🛠️ **Build From Source**](#building) &nbsp;|&nbsp; [🔍 **Offline Verifier**](#offline-verification)
+[⬇️ **Download Windows Alpha (Test-Signed)**](https://github.com/joeyvictorino/phylaram/releases) &nbsp;|&nbsp; [📊 **Validation Status & Evidence**](docs/VALIDATION_EVIDENCE.md) &nbsp;|&nbsp; [🧪 **Help Validate**](docs/COMMUNITY_VALIDATION.md) &nbsp;|&nbsp; [💚 **Funding & Sustainability**](FUNDING.md) &nbsp;|&nbsp; [🛠️ **Build From Source**](#building)
 
 ---
 
@@ -213,6 +213,42 @@ PhylaRAM maintains complete transparency regarding its verification state. Passi
 | **Gate 6** | Real-World RAM Analysis in Volatility 3 & MemProcFS | ⏳ **OPEN / PENDING** (Model bridge ✅, Live RAM pending) |
 
 See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/VALIDATION_EVIDENCE.md`](docs/VALIDATION_EVIDENCE.md) for full gate criteria and evidence logs.
+
+---
+
+## Help Validate PhylaRAM
+
+The project needs independent Windows evidence more than it needs another synthetic test.
+
+High-value contributions include:
+
+- Driver Verifier stress in a dedicated Windows test VM;
+- 64 GB ReBAR and 128 GB+ / NUMA hardware runs;
+- NTFS and ReFS sparse-file validation;
+- real lab acquisitions tested in Volatility 3 and MemProcFS;
+- review of the KMDF trust boundary, partial-read behavior, and evidence publication model.
+
+Submit reproducible results through the repository's **Validation Result** issue template. A failed run is useful evidence and will not be hidden.
+
+See [`docs/COMMUNITY_VALIDATION.md`](docs/COMMUNITY_VALIDATION.md) for the test and reporting requirements.
+
+---
+
+## Funding & Sustainability
+
+PhylaRAM is intended to remain **free and MIT-licensed**.
+
+The recurring costs are not access to the source code. They are the work required to establish trust around a Windows kernel project: production driver signing, real hardware, interoperability testing, lab infrastructure, and independent review.
+
+The project therefore follows three rules:
+
+1. funding supports validation and maintenance, not favorable findings;
+2. sponsors never buy a passing test, suppressed limitation, or private influence over forensic semantics;
+3. in-kind hardware, lab time, and independent testing are first-class contributions because they directly reduce cash requirements.
+
+A lean initial operating target is approximately **$3,000-$5,000 per year**, with actual expenses recorded as they occur. Separate commercial deployment, integration, training, support, or environment-specific validation services may exist without changing the MIT license or gating core functionality.
+
+See [`FUNDING.md`](FUNDING.md) for the full sustainability and independence model.
 
 ---
 
