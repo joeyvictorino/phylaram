@@ -98,7 +98,7 @@ External results are held to the same truthfulness standard as maintainer result
 - A model is not hardware validation.
 - A successful compile is not runtime validation.
 - A successful acquisition is not proof of downstream forensic interoperability.
-- A sponsor-funded test is not presumed to pass.
+- A test result is never presumed to pass.
 - A failed test is valuable evidence and should not be hidden.
 - Do not submit production evidence, credentials, PII, secrets, or proprietary memory contents.
 
@@ -108,11 +108,9 @@ With the contributor's permission, reproducible external validation may be refer
 
 Anonymous or organization-only attribution is acceptable when a contributor cannot be named publicly.
 
-## Funding and in-kind support
+## Community lab access
 
-Borrowed hardware, donated lab time, engineering review, and repeatable external testing directly reduce the project's cash requirements.
-
-See [`../FUNDING.md`](../FUNDING.md) for the sustainability model and independence rules.
+Existing hardware, shared lab capacity, volunteered test time, engineering review, and repeatable external testing can close validation gaps without turning the project into a product or service.
 
 The project benefits most from one thing:
 
