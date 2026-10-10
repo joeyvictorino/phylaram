@@ -1,5 +1,9 @@
 # Security Policy
 
+## Supported Versions
+
+PhylaRAM is alpha (`0.1.0-alpha`, test-signed, lab and controlled test environments only). Only the latest release and `main` receive fixes.
+
 ## Reporting Security Vulnerabilities
 
 If you discover a security vulnerability in PhylaRAM (particularly in the kernel driver `phylaram.sys` or elevation mechanisms in `phylaram.exe`), please report it responsibly.

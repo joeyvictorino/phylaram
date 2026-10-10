@@ -33,17 +33,22 @@ All human-written and AI-generated production code, tests, tooling, documentatio
 
 ### Portable validation
 
-```bash
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
+One command runs everything that does not need Windows (policy check, all C++20 model tests with `-Wall -Wextra -Werror`, Rust `fmt`/`clippy -D warnings`/tests, and the Python fixture, topology and hostile-input suites). It needs Python 3, `clang++` (or set `CXX`) and a Rust toolchain:
 
+```bash
+python3 tests/run_all_tests.py
+```
+
+For the verifier alone:
+
+```bash
 cd tools/phylaram-verify
 cargo fmt --check
-cargo clippy -- -D warnings
-cargo test --verbose
+cargo clippy --all-targets -- -D warnings
+cargo test
 ```
+
+CI runs the same battery (`.github/workflows/ci.yml`). If you add a test, add it to `tests/run_all_tests.py` so CI and local runs cannot drift.
 
 ### Windows build
 
@@ -60,8 +65,7 @@ Passing portable tests does not close Windows-only validation gates. Driver Veri
 Before submitting a PR, verify:
 
 - [ ] The final merge gate in `ENGINEERING_STANDARD.md` has been applied to all relevant changes.
-- [ ] Portable C++ unit tests pass with zero warnings (`-Wall -Wextra -Werror`).
-- [ ] `cargo fmt --check`, `cargo test`, and `cargo clippy -- -D warnings` pass in `tools/phylaram-verify`.
+- [ ] `python3 tests/run_all_tests.py` passes (C++ tests with zero warnings, `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`).
 - [ ] Modifications to `shared/phylaram.h` preserve explicit ABI sizing and trigger a protocol compatibility review.
 - [ ] No temporary, compiler, evidence, or signing artifacts are committed unintentionally.
 - [ ] Fixed defects have regression coverage where practical.
