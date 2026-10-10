@@ -7,72 +7,44 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-portable:
     name: Portable Policy, C++20, Rust & Model Tests
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      - name: Engineering Policy Check
-        run: python3 scripts/engineering_policy_check.py
+      - name: Python syntax check
+        run: python3 -m compileall -q scripts tests tools
 
-      - name: C++20 Unit Tests
-        run: |
-          set -euo pipefail
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra
-          /tmp/test_range_algebra
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire
-          /tmp/test_mock_acquire
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json
-          /tmp/test_map_json
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser
-          /tmp/test_cli_parser
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_zdmp_format.cpp -o /tmp/test_zdmp_format
-          /tmp/test_zdmp_format
-          clang++ -std=c++20 -Wall -Wextra -Werror tests/test_e01_format.cpp -o /tmp/test_e01_format
-          /tmp/test_e01_format
-
-      - name: Rust Format, Clippy & Tests
-        working-directory: tools/phylaram-verify
-        run: |
-          cargo fmt --check
-          cargo clippy --all-targets -- -D warnings
-          cargo test --verbose
-
-      - name: Forensic Interoperability Fixture Models
-        run: python3 tests/test_volatility_fixture.py
-
-      - name: Hardware & Memory Topology Models
-        run: python3 tests/test_topology_matrix.py
-
-      - name: Hostile Input & Corrupt Fixture Rejection Suite
-        run: python3 tests/test_hostile_fuzz_fixtures.py
-
-      - name: Forensic Format Converters & Bridge Options
-        run: |
-          python3 tools/phylaram_convert.py -h
-          python3 tools/phylaram_memprocfs.py -h
-          python3 tools/phylaram_vol3.py -h
+      - name: Portable test battery (policy check, C++20 tests, Rust fmt/clippy/tests, fixture suites)
+        run: python3 tests/run_all_tests.py
 
   build-windows:
     name: Windows MSVC & KMDF Build
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
       - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
+        uses: NuGet/setup-nuget@v3
 
       - name: Install WDK Packages
         run: nuget restore packages.config -PackagesDirectory packages
@@ -176,7 +148,7 @@ jobs:
           Copy-Item LICENSE (Join-Path $destination "LICENSE.txt")
 
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: PhylaRAM-0.1.0-alpha-TEST-SIGNED
           path: dist/PhylaRAM-0.1.0-alpha-TEST-SIGNED/
