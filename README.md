@@ -1,81 +1,105 @@
 # PhylaRAM
 
-> **Forensically honest live physical-memory acquisition for Windows.**  
-> Byte-accurate unreadable-page provenance, physical-address-preserving RAW output, and independent offline mathematical verification.
-
 [![CI](https://github.com/joeyvictorino/phylaram/actions/workflows/ci.yml/badge.svg)](https://github.com/joeyvictorino/phylaram/actions/workflows/ci.yml)
 [![Pre-release](https://img.shields.io/github/v/release/joeyvictorino/phylaram?include_prereleases&label=pre-release)](https://github.com/joeyvictorino/phylaram/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Validation Status](https://img.shields.io/badge/Gates-5%20Open%20%7C%201%20Closed-orange.svg)](docs/STATUS.md)
-
----
-
-### Quick Actions
-
-[⬇️ **Download Windows Alpha (Test-Signed)**](https://github.com/joeyvictorino/phylaram/releases) &nbsp;|&nbsp; [📊 **Validation Status & Evidence**](docs/VALIDATION_EVIDENCE.md) &nbsp;|&nbsp; [🧪 **Help Validate**](docs/COMMUNITY_VALIDATION.md) &nbsp;|&nbsp; [🛠️ **Build From Source**](#building)
-
----
 
 > [!WARNING]
 > **Alpha software. Lab & controlled test environments only.**  
 > PhylaRAM's kernel driver (`phylaram.sys`) is currently test-signed with a self-signed certificate for test VMs. Production Microsoft driver signing, Driver Verifier 100-cycle stress, and physical-hardware matrix gates are actively tracked in [`docs/STATUS.md`](docs/STATUS.md).  
 > **Do not disable Secure Boot or HVCI/Memory Integrity on a real evidence host merely to load an alpha driver.**
 
----
+PhylaRAM acquires live physical memory from Windows x64 hosts and records exactly what it could and could not read. A small KMDF driver serves bounded reads, a C++20 engine (CLI and Win32 GUI) writes the image, and an independent Rust tool re-checks the finished evidence bundle offline. The point is provenance: a page the hardware refused to return is isolated at 4 KiB granularity and recorded in a JSON map with its exact `NTSTATUS`, so an analyst can tell "unreadable" from "observed zeros". Every capture ends with a SHA-256 sidecar and is published atomically. Status: `0.1.0-alpha`; the build and the portable tests pass in CI, while the driver has not been validated on physical hardware, under Driver Verifier, or with production signing (see [Validation status](#validation-status)).
 
-![PhylaRAM Minimalist Pro Dark Mode GUI](docs/media/gui_dark_preview.jpg)
-*PhylaRAM Native Win32 Desktop Interface (Dark System Canvas, live telemetry inspector, and kernel hints).*
+![PhylaRAM dark mode GUI](docs/media/gui_dark_preview.jpg)
+*GUI layout (dark mode). The values shown are sample values, not a benchmark; no performance measurements have been recorded yet ([`docs/BENCHMARKS.md`](docs/BENCHMARKS.md)).*
 
----
+## Quickstart
 
-## Technical Differentiators
+### A. Check the verifier and tests on any machine (no Windows needed)
 
-```text
-┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ 1. Physical-Address-Preserving RAW                                                               │
-│    file offset == physical address. Unpopulated hardware gaps are preserved as sparse extents.   │
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 2. UNREADABLE != ZERO Provenance                                                                 │
-│    Hardware read errors are isolated to 4 KiB pages and recorded in map.json with exact NTSTATUS.│
-│    Unreadable spans are not silently converted to misleading observed zero-filled memory.        │
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 3. Independent Rust Hostile-Input Verifier (phylaram-verify)                                     │
-│    Mathematically verifies logical size, range ordering, sum equality, zero-backing, and SHA-256 │
-│    without trusting claims made by user-mode code or the kernel driver.                          │
-├──────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 4. Bounded Run-Index Kernel Protocol                                                             │
-│    User mode cannot submit arbitrary physical addresses. Reads reference a frozen snapshot      │
-│    enumerated at session start via MmGetPhysicalMemoryRangesEx2.                                 │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+Needs Python 3, a C++20 compiler (`clang++`, or set `CXX`) and a Rust toolchain.
+
+```bash
+git clone https://github.com/joeyvictorino/phylaram
+cd phylaram
+python3 tests/run_all_tests.py      # 14 steps; about a minute once the Rust dependencies are built
 ```
 
----
+This runs the policy check, the C++20 model tests, the Rust verifier's fmt/clippy/tests, a synthetic-bundle fixture run through the verifier, and the hostile-input rejection suite. It does not touch a driver and does not close any Windows or hardware gate.
+
+### B. Acquire memory in a Windows lab VM (alpha, test-signed)
+
+Use a dedicated test VM, never a real evidence host. The steps follow [`README-FIRST.txt`](README-FIRST.txt), which ships inside the release archive; the test-signed binaries are attached to the [pre-release](https://github.com/joeyvictorino/phylaram/releases).
+
+```cmd
+:: elevated prompt in the test VM
+bcdedit /set testsigning on
+:: reboot, then run install_test_cert.bat as Administrator
+
+phylaram.exe C:\evidence\test_capture.raw
+phylaram-verify.exe C:\evidence\test_capture.raw C:\evidence\test_capture.raw.map.json C:\evidence\test_capture.raw.sha256
+```
+
+Other invocations (see `phylaram.exe --help`):
+
+```cmd
+phylaram.exe --gui                                :: native GUI
+phylaram.exe --dry-run [--json]                   :: topology and kernel hints, writes no evidence
+phylaram.exe C:\evidence\mem.raw --rate-limit 100 :: throttle to 100 MiB/s
+phylaram.exe C:\evidence\mem.e01 --case-number C-1 --examiner "A. Analyst"
+```
+
+Output format follows the extension or `--format raw|zdmp|dmp|e01`. RAW is the default and the only format `phylaram-verify` checks; `.zdmp`/`.dmp` (Complete Memory Crash Dump layout) and `.e01` are experimental: their tests check header layouts only and no third-party reader has been run against their output.
+
+## What it does not do
+
+- It is not production-signed. The driver is test-signed, not WHCP/HLK certified, and no Secure Boot or HVCI compatibility is claimed.
+- It has not been validated on physical hardware, under Driver Verifier stress, or on real acquired images in Volatility 3 or MemProcFS. Those gates are open.
+- It does not stream to stdout, skip hashing, skip the provenance map, or overwrite existing evidence.
+- It does not acquire memory on Linux or macOS. Only the verifier and the portable tests run there.
+- It does not analyze memory or interpret findings; the map records acquisition facts only.
+- A passing `phylaram-verify` shows the bundle is internally consistent. It does not establish chain of custody or legal admissibility.
+- It publishes no benchmark numbers or comparisons with other tools.
+
+## Evidence bundle
+
+Every successful capture produces exactly three files:
+
+```text
+memory.raw          # flat image: file offset == physical address; unpopulated gaps stay sparse
+memory.raw.map.json # provenance map, schema phylaram-map-2 (see docs/MAP_SCHEMA.md)
+memory.raw.sha256   # SHA-256 of the logical image
+```
+
+Evidence is written to `.partial` staging files and promoted to the final names only after all bytes are flushed, byte accounting balances and the sidecars are final. The CLI refuses to overwrite existing evidence or staging files.
+
+| Exit code | Meaning |
+| :---: | :--- |
+| `0` | Complete: all bytes acquired, accounting balanced, topology stable, bundle finalized. |
+| `2` | Incomplete: bundle finalized, but unreadable spans or a topology change were recorded. |
+| `1` | Failed or cancelled: no final bundle published; staging files removed. |
+
+The map records producer and schema version, terminal status, byte accounting (`logical_size`, `physical_bytes`, `acquired_bytes`, `unreadable_bytes`), the frozen physical-memory runs, each unreadable span with its `NTSTATUS`, and acquisition-time kernel hints (System-process CR3/DTB, kernel base, build number).
 
 ## Architecture
 
-PhylaRAM unifies CLI and GUI clients around a single canonical evidence publication transaction:
-
 ```mermaid
 flowchart LR
-    subgraph UI ["Client Layer"]
-        CLI["CLI Engine\nphylaram.exe"]
-        GUI["Native GUI\nphylaram.exe --gui"]
+    subgraph UI ["Clients"]
+        CLI["phylaram.exe (CLI)"]
+        GUI["phylaram.exe --gui"]
     end
-
-    subgraph Core ["Acquisition Engine"]
-        Trans["CaptureEvidenceToFile()\nTransaction Coordinator"]
-        KMDF["KMDF Kernel Driver\n(phylaram.sys)\nPASSIVE_LEVEL"]
+    subgraph Core ["User-mode engine"]
+        Trans["CaptureEvidenceToFile()<br/>single evidence transaction"]
     end
-
-    subgraph Storage ["Finalized Evidence Bundle"]
-        RAW["memory.raw\n(Flat Binary Image)"]
-        MAP["memory.raw.map.json\n(phylaram-map-2)"]
-        SHA["memory.raw.sha256\n(Cryptographic Digest)"]
+    KMDF["phylaram.sys (KMDF)<br/>PASSIVE_LEVEL, admin/SYSTEM only"]
+    subgraph Bundle ["Evidence bundle"]
+        RAW["memory.raw"]
+        MAP["memory.raw.map.json"]
+        SHA["memory.raw.sha256"]
     end
-
-    subgraph Audit ["Independent Verification"]
-        Verifier["phylaram-verify (Rust)\nMathematical Verifier"]
-    end
+    Verifier["phylaram-verify (Rust)<br/>offline"]
 
     CLI --> Trans
     GUI --> Trans
@@ -86,155 +110,58 @@ flowchart LR
     RAW & MAP & SHA --> Verifier
 ```
 
----
+Design properties, each enforced in code:
 
-## 30-Second Quick Start
+- **Bounded kernel protocol.** The driver snapshots the physical-memory ranges (`MmGetPhysicalMemoryRangesEx2`) when a session starts. A read request carries only a run index, an offset within that run and a length (`PHYLA_READ_REQUEST` in `shared/phylaram.h`); user mode cannot supply a physical address. The device is restricted to SYSTEM and Administrators by SDDL.
+- **Partial reads are kept.** Reads use `MmCopyMemory`; a failed 16 MiB transfer is retried at 4 KiB page granularity so readable bytes are preserved and only the failing pages are recorded as unreadable.
+- **One transaction for CLI and GUI.** Neither presentation layer decides on its own that evidence is complete.
+- **Independent verification.** `phylaram-verify` re-derives the checks from the three files without trusting the producer: logical size equals the highest physical range end equals the RAW file size; ranges are ordered, non-overlapping and sum to `physical_bytes`; unreadable spans lie inside physical runs, do not overlap and are zero-backed in the file; the terminal status matches the byte accounting; and the SHA-256 matches both the map and the sidecar.
 
-### 1. Acquire Memory (Elevated Administrator)
-```cmd
-phylaram.exe C:\evidence\mem_HOST_20260823.raw
-```
-Or launch the native graphical interface:
-```cmd
-phylaram.exe --gui
-```
+| Path | Contents |
+| :--- | :--- |
+| `driver/` | C17 KMDF driver `phylaram.sys` |
+| `cli/` | C++20 acquisition engine, evidence transaction, writers, native GUI |
+| `shared/` | ABI shared by driver and engine (compile-time size assertions) |
+| `tools/phylaram-verify/` | Rust offline verifier with property tests |
+| `tools/*.py` | Offline converter and Volatility 3 / MemProcFS launch helpers, benchmark script |
+| `tests/` | C++20 model tests, Python fixture, topology and hostile-input suites |
+| `integrations/velociraptor/` | Example artifacts (not exercised by any test here) |
+| `docs/` | Architecture, map schema, status, validation evidence, signing/HVCI guide |
 
-Optional rate-limiting is supported in MiB/s:
-```cmd
-phylaram.exe C:\evidence\mem_HOST_20260823.raw --rate-limit 100
-```
+## Build from source
 
-### 2. Verify Evidence Bundle
-```cmd
-phylaram-verify.exe C:\evidence\mem_HOST_20260823.raw C:\evidence\mem_HOST_20260823.raw.map.json C:\evidence\mem_HOST_20260823.raw.sha256
-```
+Windows (driver, CLI, GUI), with Visual Studio 2022 (MSVC v143, C++20); the WDK comes from NuGet:
 
-### 3. Inspect Live Kernel Hints
-```cmd
-phylaram.exe --dry-run
-```
-
----
-
-## Finalized Evidence Bundle Contract
-
-Every successful capture transaction produces exactly three files:
-
-```text
-memory.raw          # Flat physical-address-preserving binary image
-memory.raw.map.json # Canonical provenance map (schema phylaram-map-2)
-memory.raw.sha256   # Cryptographic SHA-256 digest of the logical image
-```
-
-Publication is atomic: evidence is written to `.partial` staging files. The canonical filenames are promoted only after all bytes have flushed, byte accounting has balanced, and sidecars have finalized.
-
-### Terminal Outcomes & Exit Codes
-
-| Exit Code | Terminal Status | Meaning |
-| :---: | :--- | :--- |
-| `0` | **Complete** | Full acquisition completed, byte accounting balanced, topology remained stable, and the bundle finalized. |
-| `2` | **Incomplete** | Finalized bundle records unreadable hardware spans (`STATUS_DEVICE_DATA_ERROR`) or a topology change during session. |
-| `1` | **Failed / Cancelled** | No final evidence bundle published. All temporary staging files cleanly removed. |
-
----
-
-## Provenance Map Contract (`phylaram-map-2`)
-
-The canonical sidecar (`<output>.map.json`) records strict acquisition facts:
-- Producer version, schema version (`phylaram-map-2`), and terminal status (`complete` / `incomplete`);
-- Exact byte counts: `logical_size`, `physical_bytes`, `acquired_bytes`, `unreadable_bytes`;
-- Re-enumerated topology change detection flag;
-- Flat logical SHA-256 digest;
-- Frozen physical memory run descriptors (`driver_run`, `start`, `length`);
-- Isolated unreadable spans with exact `NTSTATUS` codes;
-- Live Ring 0 kernel hints (System process CR3 / DTB, executing CPU KPCR, NTOSKRNL base virtual address and image size, Windows build number).
-
-See [`docs/MAP_SCHEMA.md`](docs/MAP_SCHEMA.md) for the full JSON schema specification.
-
----
-
-## Offline Mathematical Verifier (`phylaram-verify`)
-
-The independent Rust verifier (`tools/phylaram-verify`) enforces hostile-input validation:
-
-```bash
-phylaram-verify memory.raw memory.raw.map.json memory.raw.sha256
-```
-
-It proves that:
-1. `logical_size == highest physical range end == RAW file size`;
-2. Physical ranges are strictly ordered, non-zero, non-overlapping, and sum to `physical_bytes`;
-3. `driver_run` indices form a valid contiguous domain;
-4. Unreadable spans are wholly contained within reported physical RAM and never overlap;
-5. Bytes in the RAW file at offsets recorded as unreadable are zero-backed representation bytes;
-6. Terminal status mathematically matches observed unreadable bytes and topology stability;
-7. The flat SHA-256 digest over the logical RAW file matches both the map and `.sha256` sidecar.
-
----
-
-## Building from Source
-
-### Requirements
-- Visual Studio 2022 (MSVC v143) with C++20 support
-- Windows Driver Kit (WDK) toolchain restored via NuGet
-- Rust 1.75+ for `phylaram-verify`
-
-### Windows Build (Driver, CLI, GUI, and Verifier)
 ```cmd
 nuget restore packages.config -PackagesDirectory packages
 msbuild PhylaRAM.sln /p:Configuration=Release /p:Platform=x64 /v:minimal /m
 ```
 
-### Portable Test Suite (macOS / Linux / Windows)
-```bash
-python3 scripts/engineering_policy_check.py
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_range_algebra.cpp -o /tmp/test_range_algebra && /tmp/test_range_algebra
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_mock_acquire.cpp -o /tmp/test_mock_acquire && /tmp/test_mock_acquire
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_map_json.cpp -o /tmp/test_map_json && /tmp/test_map_json
-clang++ -std=c++20 -Wall -Wextra -Werror tests/test_cli_parser.cpp -o /tmp/test_cli_parser && /tmp/test_cli_parser
+The Rust verifier builds anywhere with a current stable toolchain: `cd tools/phylaram-verify && cargo build --release`.
 
-cd tools/phylaram-verify
-cargo test --verbose
+## Tests
+
+```bash
+python3 tests/run_all_tests.py     # everything portable, as above
 ```
 
----
+CI ([`ci.yml`](.github/workflows/ci.yml)) runs that battery on macOS, builds the driver, CLI and verifier on `windows-2022` with CI test signing, and uploads the test-signed artifacts. [`codeql.yml`](.github/workflows/codeql.yml) runs CodeQL for C/C++ weekly and on pushes. Passing CI is necessary but not sufficient: it does not substitute for hardware validation.
 
-## Validation Status & Open Gates
+## Validation status
 
-PhylaRAM maintains complete transparency regarding its verification state. Passing CI builds or offline models does not substitute for hardware validation.
-
-| Gate | Validation Target | Status |
+| Gate | Target | State |
 | :--- | :--- | :--- |
-| **Gate 1** | Automated MSVC & KMDF CI Build via NuGet Toolset | 🟢 **COMPLETED** |
-| **Gate 2** | Static Driver Verifier (SDV) & CodeQL Suite | ⏳ **OPEN / PENDING** (CodeQL ✅, SDV pending) |
-| **Gate 3** | Driver Verifier Dynamic Stress Profile (100 Cycles) | ⏳ **OPEN / PENDING** |
-| **Gate 4** | Physical Hardware & Topology Matrix (4GB to 128GB+, ReBAR, NUMA) | ⏳ **OPEN / PENDING** (Model ✅, Hardware pending) |
-| **Gate 5** | Production Driver Signing & VBS/HVCI Hardening | ⏳ **OPEN / PENDING** (Test-signed in CI) |
-| **Gate 6** | Real-World RAM Analysis in Volatility 3 & MemProcFS | ⏳ **OPEN / PENDING** (Model bridge ✅, Live RAM pending) |
+| 1 | Windows x64 build and packaging in CI | Passing in CI; must stay green at the release commit |
+| 2 | Static Driver Verifier and CodeQL | CodeQL runs; SDV open |
+| 3 | Driver Verifier stress, 100 cycles | Open |
+| 4 | Physical hardware and topology matrix (4 GB to 128 GB+, ReBAR, NUMA) | Open (simulated topology models only) |
+| 5 | Production Microsoft driver signing, Secure Boot/VBS/HVCI | Open |
+| 6 | Real acquired images in Volatility 3 and MemProcFS | Open (synthetic fixtures only) |
 
-See [`docs/STATUS.md`](docs/STATUS.md) and [`docs/VALIDATION_EVIDENCE.md`](docs/VALIDATION_EVIDENCE.md) for full gate criteria and evidence logs.
+Details and evidence logs: [`docs/STATUS.md`](docs/STATUS.md), [`docs/VALIDATION_EVIDENCE.md`](docs/VALIDATION_EVIDENCE.md). Reproducible results from real lab environments are the most useful contribution: see [`docs/COMMUNITY_VALIDATION.md`](docs/COMMUNITY_VALIDATION.md) and the Validation Result issue template. A failed run is useful evidence.
 
----
+## Contributing, security, license
 
-## Help Validate PhylaRAM
-
-PhylaRAM is free, MIT-licensed software. Community participation is focused on technical review, reproducible testing, and improving the public evidence around the project.
-
-High-value contributions include:
-
-- Driver Verifier stress in a dedicated Windows test VM;
-- 64 GB ReBAR and 128 GB+ / NUMA hardware runs;
-- NTFS and ReFS sparse-file validation;
-- real lab acquisitions tested in Volatility 3 and MemProcFS;
-- review of the KMDF trust boundary, partial-read behavior, and evidence publication model.
-
-Submit reproducible results through the repository's **Validation Result** issue template. A failed run is useful evidence and will not be hidden.
-
-See [`docs/COMMUNITY_VALIDATION.md`](docs/COMMUNITY_VALIDATION.md) for the test and reporting requirements.
-
----
-
-## License
-
-PhylaRAM is open-source software licensed under the [MIT License](LICENSE).
-Third-party component notices are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`ENGINEERING_STANDARD.md`](ENGINEERING_STANDARD.md)
+- [`SECURITY.md`](SECURITY.md): report vulnerabilities privately
+- MIT licensed, see [`LICENSE`](LICENSE); third-party notices in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
