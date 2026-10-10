@@ -1,8 +1,8 @@
-# PhylaRAM: Official Microsoft/Apple Incident Response UI Specification
+# PhylaRAM: GUI Design Notes
 
 **Document ID:** `PHYLA-GUI-SPEC-003`  
 **Status:** Canonical Visual Standard  
-**Design Philosophy:** "Apple Designed, Microsoft Built" — Official Sysinternals / PowerToys Quality  
+**Design Philosophy:** Minimal, Windows 11 Fluent-style interface in the spirit of Sysinternals-class utilities (design intent, not an affiliation)  
 **Audience:** Non-technical on-site users & sysadmins during live incident response, powered by the professional CLI engine for principal IR consultants  
 
 ---
@@ -16,7 +16,7 @@ During an active cyber incident or breach investigation, friction kills evidence
 |                                 PhylaRAM Dual-Persona Architecture                                |
 +-------------------------------------------------+-------------------------------------------------+
 | Non-Technical / On-Site Sysadmin Persona        | Principal IR Consultant Persona                 |
-| (The Official Fluent Windows 11 GUI)            | (The Non-Interactive C++20 / Rust CLI)          |
+| (The Fluent-style Windows 11 GUI)            | (The Non-Interactive C++20 / Rust CLI)          |
 +-------------------------------------------------+-------------------------------------------------+
 | - Zero technical jargon                         | - Pure headless CLI: `phylaram.exe memory.raw`  |
 | - Handed to any employee or sysadmin over Slack | - EDR Live Response / Velociraptor automatable  |
@@ -31,10 +31,10 @@ During an active cyber incident or breach investigation, friction kills evidence
 
 ## 2. Visual Identity & Design System
 
-### 2.1 Aesthetic Language: Official Microsoft Fluent Meets Apple Simplicity
+### 2.1 Aesthetic Language: Windows 11 Fluent Meets Apple-style Simplicity
 - **Canvas:** Dark mode Windows 11 Mica & Acrylic material with subtle backdrop diffusion.
 - **Typography:** Segoe UI Variable Display for headers, Segoe UI Text for body, and subtle system accents.
-- **Colors:** Deep charcoal neutral card surfaces (`#20232A`), official Windows 11 accent blue (`#0078D4` / `#4A9EFF`) for primary action, and reassuring emerald green (`#107C41` / `#00CC6A`) for verified completion.
+- **Colors:** Deep charcoal neutral card surfaces (`#20232A`), Windows 11 accent blue (`#0078D4` / `#4A9EFF`) for primary action, and reassuring emerald green (`#107C41` / `#00CC6A`) for verified completion.
 - **Zero Antivirus / Gamer Tropes:** No cyan halos, no gamer RGB meters, and no confusing options.
 
 ---
@@ -45,7 +45,7 @@ During an active cyber incident or breach investigation, friction kills evidence
 - **Header:** `PhylaRAM` — `Live Memory Capture for Windows`
 - **Detected System Memory:** `32.0 GB Physical Memory Detected`
 - **Destination:** Auto-selects external USB or default case folder (`Save Evidence To: E:\Incident_Response\memory.raw (1.8 TB Free · Ready)`)
-- **Single Primary Action:** `[ Start Memory Capture ]` (High-contrast official Windows 11 style primary button)
+- **Single Primary Action:** `[ Start Memory Capture ]` (High-contrast Windows 11 style primary button)
 
 ### Screen 2: The Calm Progress Screen
 - **Header:** `PhylaRAM` — `Capturing Memory...`
