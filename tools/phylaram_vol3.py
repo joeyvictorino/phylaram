@@ -2,9 +2,10 @@
 """
 PhylaRAM Volatility 3 Bridge Helper
 -----------------------------------
-Reads a PhylaRAM provenance map (`memory.raw.map.json`) and accelerates
-Volatility 3 analysis by passing live Ring 0 kernel hints (CR3 Directory Table Base,
-NTOSKRNL Base, and KPCR) directly to Volatility 3 CLI or API.
+Reads a PhylaRAM provenance map (`memory.raw.map.json`), prints the
+acquisition-time kernel hints it contains (System CR3 / Directory Table Base,
+NTOSKRNL base, Windows build), then runs Volatility 3 as `vol -f <image> ...`.
+The hints are informational: they are not passed to Volatility 3.
 
 Usage:
   python phylaram_vol3.py <memory.raw> [volatility_plugin] [volatility_args...]
@@ -42,7 +43,7 @@ def main():
     hints = map_data.get("kernel_hints", {})
 
     print("===============================================================================")
-    print("                    PhylaRAM -> Volatility 3 Accelerated Bridge               ")
+    print("                    PhylaRAM -> Volatility 3 Bridge                          ")
     print("===============================================================================")
     print(f"RAW Image       : {raw_path} ({os.path.getsize(raw_path):,} bytes)")
 

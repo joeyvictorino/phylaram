@@ -1,6 +1,8 @@
 # PhylaRAM: Incident Responder & Operator's Guide
 
-A practical handbook for acquiring, streaming, and analyzing live physical memory on Windows systems.
+A practical handbook for acquiring and analyzing live physical memory on Windows systems.
+
+> Alpha software. Lab and controlled test environments only. See the warning in the [README](../README.md) and [`STATUS.md`](STATUS.md).
 
 ---
 
@@ -15,7 +17,7 @@ phylaram.exe C:\Evidence\DESKTOP-MEM.raw
 **Generated Evidence Bundle:**
 - `DESKTOP-MEM.raw`: Flat physical RAW image (sparse-allocated).
 - `DESKTOP-MEM.raw.map.json`: Full physical topology map, Ring 0 kernel hints, and status.
-- `DESKTOP-MEM.raw.sha256`: Flat logical image SHA-256 Authenticode sidecar.
+- `DESKTOP-MEM.raw.sha256`: SHA-256 digest of the flat logical image (sidecar).
 
 ---
 
@@ -28,15 +30,16 @@ phylaram.exe D:\Evidence\image.raw --rate-limit 150
 ```
 *Limits memory acquisition throughput to 150 MB/s.*
 
-### 2.2 Live Network Streaming (`stdout`)
-Acquire memory without writing evidence to the local drive:
+### 2.2 Output Formats
+The format is chosen by the output file extension or with `--format`:
 ```cmd
-:: Stream over Netcat / ncat to a remote forensic evidence receiver
-phylaram.exe - | ncat.exe 192.168.1.50 9999
-
-:: Stream directly over SSH
-phylaram.exe - | ssh analyst@forensic-server "cat > /cases/2026/host-ram.raw"
+phylaram.exe D:\Evidence\image.raw                :: flat physical-address-preserving RAW (default)
+phylaram.exe D:\Evidence\image.zdmp               :: 64-bit Complete Memory Crash Dump layout (.zdmp or .dmp)
+phylaram.exe D:\Evidence\image.e01 --case-number C-1 --examiner "A. Analyst"   :: Expert Witness container
 ```
+`--case-number`, `--evidence-number`, `--examiner`, `--description` and `--notes` populate E01 metadata. Every capture still produces the map and SHA-256 sidecars. The repository's ZDMP and E01 tests check header-layout invariants only; they do not exercise the writers, and no test opens a produced `.zdmp` or `.e01` with a third-party reader, so treat those two formats as experimental (see [`STATUS.md`](STATUS.md)). `phylaram-verify` verifies the flat RAW layout.
+
+Streaming to stdout (`phylaram.exe -`) is **not supported**: a raw stream cannot carry the unreadable-byte provenance map, so the CLI rejects it.
 
 ### 2.3 Pre-Acquisition Triage (`--dry-run`)
 Inspect physical RAM topology, MMIO ranges, and kernel pointers in <1 second without touching disk:
@@ -63,7 +66,7 @@ phylaram-verify.exe C:\Evidence\DESKTOP-MEM.raw C:\Evidence\DESKTOP-MEM.raw.map.
 ## 4. Volatility 3 & MemProcFS Analysis
 
 ### 4.1 Volatility 3 Accelerated Bridge
-Use the bundled bridge script to bypass symbol brute-force scanning:
+The bundled helper prints the kernel hints recorded in the map (System DTB, kernel base, build) and then runs `vol -f <image> <plugin>`. The hints are informational and are not passed to Volatility 3:
 ```bash
 python tools/phylaram_vol3.py C:\Evidence\DESKTOP-MEM.raw windows.pslist
 python tools/phylaram_vol3.py C:\Evidence\DESKTOP-MEM.raw windows.malfind
@@ -74,21 +77,10 @@ Mount the raw memory file directly as a virtual filesystem:
 ```cmd
 MemProcFS.exe -device C:\Evidence\DESKTOP-MEM.raw
 ```
-*(MemProcFS reads the physical address space directly; page tables resolve immediately via CR3).*
+*(`tools/phylaram_memprocfs.py` wraps this and also passes the System DTB hint; interoperability with real acquired images is an open validation gate.)*
 
 ---
 
-## 5. Velociraptor VQL Artifact Integration
+## 5. Velociraptor Artifacts
 
-```yaml
-name: Windows.Detection.PhylaRAMCapture
-description: Acquires full physical RAM using PhylaRAM into a central SMB share.
-parameters:
-  - name: TargetShare
-    default: "\\\\forensics-smb\\drops\\$COMPUTERNAME.raw"
-
-sources:
-  - queries:
-      - SELECT execve(argv=["phylaram.exe", TargetShare, "--quiet"]) AS Result
-        FROM scope()
-```
+Example artifacts are in [`integrations/velociraptor/`](../integrations/velociraptor/): `Windows.Memory.PhylaRAM.yaml` (capture) and `Windows.Triage.PhylaRAMDryRun.yaml` (topology and kernel hints only). No test in this repository runs them against a Velociraptor deployment; treat them as starting points and test in a lab first.

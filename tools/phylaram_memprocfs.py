@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-PhylaRAM MemProcFS Accelerated Bridge Helper
---------------------------------------------
-Reads a PhylaRAM evidence bundle (`memory.raw` + `memory.raw.map.json`) and
-accelerates MemProcFS virtual memory mounting by injecting live Ring 0 kernel
-hints (System CR3 / Directory Table Base, Kernel Base, and KPCR) directly into
-MemProcFS CLI parameters.
+PhylaRAM MemProcFS Bridge Helper
+--------------------------------
+Reads a PhylaRAM evidence bundle (`memory.raw` + `memory.raw.map.json`), prints
+the acquisition-time kernel hints, and launches
+`MemProcFS.exe -device <image> -vmm.cr3 <System DTB> <extra args>`. The
+`-vmm.cr3` option name is not validated against MemProcFS here (real-image
+interoperability is an open gate, see docs/STATUS.md). Extra arguments are
+passed to MemProcFS unchanged; there is no separate mount-point argument.
 
 Usage:
-  python phylaram_memprocfs.py <memory.raw> [mount_point] [extra_memprocfs_args...]
-  python phylaram_memprocfs.py C:\\evidence\\mem.raw M:
+  python phylaram_memprocfs.py <memory.raw> [extra_memprocfs_args...]
   python phylaram_memprocfs.py mem.raw -v -forensic 1
 """
 
@@ -43,7 +44,7 @@ def main():
     hints = map_data.get("kernel_hints", {})
 
     print("===============================================================================")
-    print("                  PhylaRAM -> MemProcFS Accelerated Bridge                    ")
+    print("                  PhylaRAM -> MemProcFS Bridge                                ")
     print("===============================================================================")
     print(f"RAW Image       : {raw_path} ({os.path.getsize(raw_path):,} bytes)")
 
