@@ -2,8 +2,7 @@ use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
 
-const RAW_SHA256: &str =
-    "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881";
+const RAW_SHA256: &str = "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881";
 
 #[test]
 fn rejects_unexpected_fourth_positional_argument() {
