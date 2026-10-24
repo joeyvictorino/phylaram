@@ -20,6 +20,13 @@ fn main() {
         }
     }
 
+    if positional.len() > 3 {
+        eprintln!("error: unexpected positional argument: {}", positional[3]);
+        eprintln!("PhylaRAM Offline Verifier 0.1.0-alpha");
+        eprintln!("Usage: phylaram-verify <memory.raw> <memory.raw.map.json> [memory.raw.sha256] [--verbose]");
+        process::exit(1);
+    }
+
     if positional.len() < 2 {
         eprintln!("PhylaRAM Offline Verifier 0.1.0-alpha");
         eprintln!("Usage: phylaram-verify <memory.raw> <memory.raw.map.json> [memory.raw.sha256] [--verbose]");
